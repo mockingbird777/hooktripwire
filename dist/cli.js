@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-import { access, mkdir, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { access, mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { audit, VERSION } from "./engine.js";
 import { formatResult } from "./formatters.js";
 import { createBaseline, loadBaseline, loadPolicy, normalizePolicy } from "./policy.js";
 import { RULES } from "./rules.js";
-import { isAtLeast, parseSeverity } from "./utils.js";
+import { isAtLeast, parseSeverity, visibleControls } from "./utils.js";
 const HELP = `HookTripwire ${VERSION} — static security auditing for AI agent hooks
 
 Usage:
@@ -30,9 +31,9 @@ Examples:
   hooktripwire . --format sarif --output hooktripwire.sarif
   hooktripwire . --write-baseline .hooktripwire-baseline.json
 `;
-function valueAfter(argv, index, flag) {
+function valueAfter(argv, index, flag, allowStdout = false) {
     const value = argv[index + 1];
-    if (value === undefined || value.startsWith("-"))
+    if (value === undefined || (value.startsWith("-") && !(allowStdout && value === "-")))
         throw new Error(`${flag} requires a value`);
     return value;
 }
@@ -66,7 +67,7 @@ function parseArguments(argv) {
             args.format = value;
         }
         else if (item === "-o" || item === "--output") {
-            args.output = valueAfter(argv, index, item);
+            args.output = valueAfter(argv, index, item, true);
             index += 1;
         }
         else if (item === "--policy") {
@@ -128,9 +129,15 @@ async function autoBaseline(cwd, explicit) {
 async function atomicWrite(file, content) {
     const absolute = path.resolve(file);
     await mkdir(path.dirname(absolute), { recursive: true });
-    const temporary = path.join(path.dirname(absolute), `.${path.basename(absolute)}.${process.pid}.tmp`);
-    await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, absolute);
+    const temporary = path.join(path.dirname(absolute), `.${path.basename(absolute)}.${process.pid}.${randomUUID()}.tmp`);
+    try {
+        await writeFile(temporary, content, { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await rename(temporary, absolute);
+    }
+    catch (error) {
+        await unlink(temporary).catch(() => undefined);
+        throw error;
+    }
 }
 function rulesText() {
     return `${RULES.map((rule) => `${rule.id}\t${rule.defaultSeverity.padEnd(8)}\t${rule.title}`).join("\n")}\n`;
@@ -141,7 +148,7 @@ async function main() {
         args = parseArguments(process.argv.slice(2));
     }
     catch (error) {
-        process.stderr.write(`hooktripwire: ${error instanceof Error ? error.message : String(error)}\nTry 'hooktripwire --help'.\n`);
+        process.stderr.write(`hooktripwire: ${visibleControls(error instanceof Error ? error.message : String(error))}\nTry 'hooktripwire --help'.\n`);
         return 2;
     }
     if (args.help) {
@@ -164,7 +171,7 @@ async function main() {
         if (args.writeBaseline !== undefined) {
             const output = `${JSON.stringify(createBaseline(result.findings.map((finding) => finding.fingerprint)), null, 2)}\n`;
             await atomicWrite(args.writeBaseline, output);
-            process.stdout.write(`Wrote ${result.findings.length} fingerprints to ${args.writeBaseline}\n`);
+            process.stdout.write(`Wrote ${result.findings.length} fingerprints to ${visibleControls(args.writeBaseline)}\n`);
             return 0;
         }
         const report = formatResult(result, args.format, args.color && args.format === "terminal");
@@ -172,12 +179,12 @@ async function main() {
             process.stdout.write(report);
         else {
             await atomicWrite(args.output, report);
-            process.stderr.write(`HookTripwire wrote ${args.format} report to ${args.output}\n`);
+            process.stderr.write(`HookTripwire wrote ${args.format} report to ${visibleControls(args.output)}\n`);
         }
         return args.failOn !== undefined && result.findings.some((finding) => finding.suppressed !== true && isAtLeast(finding.severity, args.failOn)) ? 1 : 0;
     }
     catch (error) {
-        process.stderr.write(`hooktripwire: ${error instanceof Error ? error.message : String(error)}\n`);
+        process.stderr.write(`hooktripwire: ${visibleControls(error instanceof Error ? error.message : String(error))}\n`);
         return 2;
     }
 }

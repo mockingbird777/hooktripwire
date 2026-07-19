@@ -1,8 +1,8 @@
 import path from "node:path";
 import { compactEvidence } from "./utils.js";
 function hit(meta, context, match, message, severity) {
-    const evidence = compactEvidence(match[0]);
     const offset = Math.max(0, match.index ?? context.line.indexOf(match[0]));
+    const evidence = compactEvidence(context.originalWindow.slice(offset, offset + match[0].length));
     const prefix = context.window.slice(0, offset).split("\n");
     return {
         ruleId: meta.id,
@@ -13,6 +13,11 @@ function hit(meta, context, match, message, severity) {
         ...(severity === undefined ? {} : { severity }),
     };
 }
+function throughLine(context, match) {
+    const offset = Math.max(0, match.index ?? context.line.indexOf(match[0]));
+    const expanded = /^[^\n]*/.exec(context.line.slice(offset));
+    return expanded === null ? match : Object.assign(expanded, { index: offset });
+}
 function continuedCommand(context) {
     let value = context.line;
     let current = context.line;
@@ -22,29 +27,126 @@ function continuedCommand(context) {
     }
     return value;
 }
-function lineRule(meta, expression, message) {
-    return {
-        meta,
-        detect(context) {
-            const match = context.line.match(expression);
-            return match === null ? undefined : hit(meta, context, match, message);
-        },
-    };
-}
-function isShellComment(context) {
-    const extension = path.extname(context.input.displayPath).toLowerCase();
-    return [".sh", ".bash", ".zsh"].includes(extension) && /^\s*#/.test(context.line);
-}
-function hostFrom(value) {
-    const match = /https?:\/\/([^\s/'"`]+)/i.exec(value);
-    if (!match?.[1])
-        return undefined;
-    try {
-        return new URL(`https://${match[1]}`).hostname.toLowerCase();
+function maskSlashComments(content) {
+    const output = content.split("");
+    let quote;
+    let escaped = false;
+    let lineComment = false;
+    let blockComment = false;
+    for (let index = 0; index < output.length; index += 1) {
+        const character = content[index] ?? "";
+        const next = content[index + 1] ?? "";
+        if (lineComment) {
+            if (character === "\n")
+                lineComment = false;
+            else
+                output[index] = " ";
+            continue;
+        }
+        if (blockComment) {
+            if (character === "*" && next === "/") {
+                output[index] = " ";
+                output[index + 1] = " ";
+                index += 1;
+                blockComment = false;
+            }
+            else if (character !== "\n")
+                output[index] = " ";
+            continue;
+        }
+        if (quote !== undefined) {
+            if (escaped)
+                escaped = false;
+            else if (character === "\\")
+                escaped = true;
+            else if (character === quote)
+                quote = undefined;
+            continue;
+        }
+        if (character === "\"" || character === "'") {
+            quote = character;
+            continue;
+        }
+        if (character === "/" && next === "/") {
+            output[index] = " ";
+            output[index + 1] = " ";
+            index += 1;
+            lineComment = true;
+        }
+        else if (character === "/" && next === "*") {
+            output[index] = " ";
+            output[index + 1] = " ";
+            index += 1;
+            blockComment = true;
+        }
     }
-    catch {
-        return match[1].split(":")[0]?.toLowerCase();
+    return output.join("");
+}
+function maskHashComments(content) {
+    return content.split("\n").map((line) => {
+        let quote;
+        let escaped = false;
+        for (let index = 0; index < line.length; index += 1) {
+            const character = line[index] ?? "";
+            if (quote !== undefined) {
+                if (escaped)
+                    escaped = false;
+                else if (character === "\\" && quote === "\"")
+                    escaped = true;
+                else if (character === quote)
+                    quote = undefined;
+                continue;
+            }
+            if (character === "\"" || character === "'") {
+                quote = character;
+                continue;
+            }
+            if (character === "#" && (index === 0 || /\s/.test(line[index - 1] ?? "")))
+                return `${line.slice(0, index)}${" ".repeat(line.length - index)}`;
+        }
+        return line;
+    }).join("\n");
+}
+function maskHtmlComments(content) {
+    const output = content.split("");
+    let inside = false;
+    for (let index = 0; index < output.length; index += 1) {
+        if (!inside && content.slice(index, index + 4) === "<!--")
+            inside = true;
+        if (inside && content[index] !== "\n")
+            output[index] = " ";
+        if (inside && content.slice(index, index + 3) === "-->") {
+            output[index] = " ";
+            output[index + 1] = " ";
+            output[index + 2] = " ";
+            index += 2;
+            inside = false;
+        }
     }
+    return output.join("");
+}
+function maskedContent(input) {
+    const extension = path.extname(input.displayPath).toLowerCase();
+    const base = path.basename(input.displayPath).toLowerCase();
+    if ([".json", ".jsonc"].includes(extension) || (extension === "" && /^[\s\uFEFF]*[\[{]/.test(input.content)))
+        return maskSlashComments(input.content);
+    if ([".md", ".markdown"].includes(extension))
+        return maskHtmlComments(input.content);
+    if ([".yaml", ".yml", ".toml", ".sh", ".bash", ".zsh"].includes(extension) || ["dockerfile", "makefile", "taskfile"].includes(base))
+        return maskHashComments(input.content);
+    return input.content;
+}
+function hostsFrom(value) {
+    const hosts = [];
+    for (const match of value.matchAll(/https?:\/\/[^\s'"`]+/gi)) {
+        try {
+            hosts.push(new URL(match[0]).hostname.toLowerCase());
+        }
+        catch {
+            // A malformed URL is still detected by the surrounding network heuristic.
+        }
+    }
+    return [...new Set(hosts)];
 }
 function hostAllowed(host, policy) {
     return policy.allowHosts.some((allowed) => host === allowed || (allowed.startsWith("*.") && host.endsWith(allowed.slice(1))));
@@ -173,33 +275,28 @@ const rules = [
     {
         meta: destructive,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
-            const match = context.line.match(/\b(?:rm\s+(?:-[A-Za-z]*[rf][A-Za-z]*\s+)+(?:\/|~|\$HOME|\*|\.\.\/)|git\s+(?:reset\s+--hard|clean\s+-[A-Za-z]*f[A-Za-z]*d)|mkfs(?:\.[a-z0-9]+)?\s|dd\s+if=|diskutil\s+(?:erase|partition)|shutdown\s|reboot\s|:\(\)\s*\{)/i);
-            return match === null ? undefined : hit(destructive, context, match);
+            const match = context.line.match(/\b(?:rm\s+(?:(?:-[A-Za-z]*[rf][A-Za-z]*|--(?:recursive|force))\s+)+(?:--\s+)?["']?(?:\/|~|\$(?:HOME|\{HOME\})|\*|\.\.\/|\.(?:\/)?["']?(?:\s|$))|git\s+reset\s+--hard\b|git\s+clean\s+(?=[^\n]{0,60}(?:-[A-Za-z]*f|--force))(?=[^\n]{0,60}(?:-[A-Za-z]*d|--directories))[^\n]{0,60}|mkfs(?:\.[a-z0-9]+)?(?:\s|$)|dd\s+[^\n]{0,200}\bof=["']?\/dev\/(?:disk|rdisk|sd|nvme|vd)[^\s"']*|diskutil\s+(?:erase|partition)\b|shutdown(?:\s|$)|reboot(?:\s|$)|:\(\)\s*\{)/i);
+            return match === null ? undefined : hit(destructive, context, throughLine(context, match));
         },
     },
     {
         meta: remotePipe,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
-            const match = context.window.match(/\b(?:curl|wget)\b[^\n]{0,500}(?:\n[^\n]{0,500}){0,2}?\|\s*(?:sudo\s+)?(?:sh|bash|zsh|fish|node|python\d*|ruby|perl)\b/i);
+            const match = context.window.match(/\b(?:curl|wget)\b[^\n]{0,500}(?:\n[^\n]{0,500}){0,2}?\|\s*(?:sudo(?:\s+-[A-Za-z]+)*\s+)?(?:(?:\/usr\/bin\/env|env)\s+)?(?:\/[A-Za-z0-9_.-]+\/)*(?:sh|bash|zsh|fish|node|python\d*|ruby|perl|pwsh|powershell|iex|Invoke-Expression)\b/i);
             return match === null ? undefined : hit(remotePipe, context, match);
         },
     },
     {
         meta: exfiltration,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
             const command = continuedCommand(context);
             if (!/\b(?:curl|wget|nc|netcat|Invoke-WebRequest)\b|https?:\/\//i.test(command))
                 return undefined;
-            if (!/(?:\$(?:\{|\()?(?:[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*)|~?\/?(?:\.ssh|\.aws|\.gnupg|\.config\/gh)|\/etc\/(?:shadow|passwd))/i.test(command))
+            if (!/(?:\$(?:\{|\()?(?:[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|GITHUB_PAT)[A-Z0-9_]*)|(?:~|\$HOME|\$\{HOME\})?\/?(?:\.ssh|\.aws|\.gnupg|\.config\/gh|\.kube\/config|\.docker\/config\.json|\.netrc|\.npmrc)|\/etc\/(?:shadow|passwd))/i.test(command))
                 return undefined;
-            const host = hostFrom(command);
-            if (host !== undefined && hostAllowed(host, context.policy))
+            const hosts = hostsFrom(command);
+            const host = hosts.find((candidate) => !hostAllowed(candidate, context.policy));
+            if (hosts.length > 0 && host === undefined)
                 return undefined;
             const match = command.match(/\b(?:curl|wget|nc|netcat|Invoke-WebRequest)\b[^\n]*(?:\n[^\n]*){0,2}/i) ?? command.match(/https?:\/\/[^\s]+/i);
             return match === null ? undefined : hit(exfiltration, context, match, host === undefined ? undefined : `Sensitive material may be sent to ${host}.`);
@@ -208,26 +305,24 @@ const rules = [
     {
         meta: openNetwork,
         detect(context) {
-            const match = context.line.match(/\b(?:network(?:Access|Permission|Policy)?|allowedHosts|allowDomains|domains)\b["']?\s*[:=]\s*(?:["']?(?:\*|all|any)["']?|true|\[\s*["']\*["']\s*\])/i);
+            const match = context.window.match(/\b(?:network(?:Access|Permission|Policy)?|allowedHosts|allowDomains|domains)\b["']?\s*[:=]\s*(?:-\s*)?(?:["']?(?:\*|all|any)["']?|["']?true["']?|\[\s*["']?(?:\*|all|any)["']?\s*\])/i);
             return match === null ? undefined : hit(openNetwork, context, match);
         },
     },
     {
         meta: injection,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
-            const direct = context.line.match(/\beval\s+(?:["']?\$|`)|\b(?:sh|bash|zsh)\s+-c\s+["'][^"']*(?:\$\{|\$[A-Za-z_]|\$\()[^"']*["']/i);
+            const direct = context.line.match(/\beval\s+(?:["']?\$|`)|\b(?:sh|bash|zsh)\s+-c\s+(?:["'][^\n]*(?:\$\{|\$[A-Za-z_]|\$\()[^\n]*["']|(?:\$\{?[A-Za-z_]|\$\())/i);
             if (direct !== null)
-                return hit(injection, context, direct);
-            const workflow = context.line.match(/\brun\s*:\s*.*\$\{\{\s*(?:github\.event|inputs\.|steps\.[^.]+\.outputs)/i);
+                return hit(injection, context, throughLine(context, direct));
+            const workflow = context.line.match(/\brun\s*:\s*.*\$\{\{\s*(?:github\.(?:event|head_ref|ref_name)|inputs\.|steps\.[^.]+\.outputs)/i);
             return workflow === null ? undefined : hit(injection, context, workflow, "Workflow-controlled data is interpolated directly into a shell step.");
         },
     },
     {
         meta: autoApprove,
         detect(context) {
-            const match = context.line.match(/\b(?:dangerouslyDisableSandbox|dangerouslySkipPermissions|disablePermissions?|bypassPermissions?|skipApproval|autoApprove|auto_approve|allowedTools|allow)\b["']?\s*[:=]\s*(?:true|["']?(?:\*|all|any|everything|write-all)["']?|\[\s*["']\*["']\s*\]|["']Bash\(\*\)["'])/i);
+            const match = context.window.match(/\b(?:dangerouslyDisableSandbox|dangerouslySkipPermissions|disablePermissions?|bypassPermissions?|skipApproval|autoApprove|auto_approve|yoloMode|permissions?)\b["']?\s*[:=]\s*(?:["']?true["']?|["']?(?:\*|all|any|everything|write-all|bypassPermissions|dontAsk)["']?)|\b(?:permissionMode|defaultMode)\b["']?\s*[:=]\s*["']?(?:bypassPermissions|dontAsk)["']?|\b(?:allowedTools|allow)\b["']?\s*[:=]\s*(?:\[[^\]]{0,300}["'](?:\*|Bash\(\*\)|all|any|everything)["']|(?:-\s*)?["'](?:\*|Bash\(\*\)|all|any|everything)["'])/i);
             return match === null ? undefined : hit(autoApprove, context, match);
         },
     },
@@ -247,71 +342,82 @@ const rules = [
     {
         meta: sensitiveWrite,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
-            const match = context.line.match(/(?:>>?|\btee\b|\b(?:cp|mv|install|chmod|chown|rm|sed\s+-i)\b)[^\n]{0,200}(?:~|\$HOME)?\/?(?:\.ssh(?:\/|\b)|\.aws\/credentials|\.gnupg(?:\/|\b)|\.config\/(?:gh|git)\/|\/etc(?:\/|\b)|\/Library\/Launch(?:Agents|Daemons)|\.bashrc\b|\.zshrc\b)/i);
-            return match === null ? undefined : hit(sensitiveWrite, context, match);
+            const match = context.line.match(/(?:>>?|\btee\b|\b(?:cp|mv|install|chmod|chown|rm|touch|mkdir|sed\s+-i)\b|\bcurl\b[^\n]{0,120}\s-o\s+|\bwget\b[^\n]{0,120}\s-O\s+)[^\n]{0,200}["']?(?:(?:~|\$HOME|\$\{HOME\})\/(?:\.ssh(?:\/|\b)|\.aws\/credentials|\.gnupg(?:\/|\b)|\.config\/(?:gh|git)\/|\.kube\/config\b|\.docker\/config\.json\b|\.netrc\b|\.npmrc\b|\.bashrc\b|\.zshrc\b)|\/etc(?:\/|\b)|\/Library\/Launch(?:Agents|Daemons))/i);
+            return match === null ? undefined : hit(sensitiveWrite, context, throughLine(context, match));
         },
     },
     {
         meta: secretOutput,
         detect(context) {
-            if (isShellComment(context))
-                return undefined;
-            const trace = context.line.match(/(?:^|[;&|]\s*)set\s+-x(?:\s|$)/);
+            const trace = context.line.match(/(?:^|[;&|]\s*)set\s+(?:-x|-o\s+xtrace)(?:\s|$)/);
             if (trace !== null)
-                return hit(secretOutput, context, trace, "Shell tracing can copy later credentials into logs.", "medium");
+                return hit(secretOutput, context, throughLine(context, trace), "Shell tracing can copy later credentials into logs.", "medium");
             const match = context.line.match(/\b(?:echo|printf|printenv|Write-Output)\b[^\n]{0,160}\$(?:\{)?[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL)[A-Z0-9_]*(?:\})?/i);
-            return match === null ? undefined : hit(secretOutput, context, match);
+            return match === null ? undefined : hit(secretOutput, context, throughLine(context, match));
         },
     },
     {
         meta: unverifiedArtifact,
         detect(context) {
-            if (isShellComment(context) || !/\b(?:curl|wget)\b/i.test(context.window))
+            const download = /\b(?:curl|wget)\b/i.exec(context.window);
+            if (download === null)
                 return undefined;
-            if (/\b(?:curl|wget)\b[^\n]{0,500}(?:\n[^\n]{0,500}){0,2}?\|\s*(?:sudo\s+)?(?:sh|bash|zsh|fish|node|python\d*|ruby|perl)\b/i.test(context.window))
+            if (/\b(?:curl|wget)\b[^\n]{0,500}(?:\n[^\n]{0,500}){0,2}?\|\s*(?:sudo(?:\s+-[A-Za-z]+)*\s+)?(?:(?:\/usr\/bin\/env|env)\s+)?(?:\/[A-Za-z0-9_.-]+\/)*(?:sh|bash|zsh|fish|node|python\d*|ruby|perl|pwsh|powershell)\b/i.test(context.window))
                 return undefined;
-            if (/\b(?:sha256sum|shasum\s+-a\s+256|cosign\s+verify|gpg\s+--verify|openssl\s+dgst)\b/i.test(context.window))
+            const afterDownload = context.window.slice((download.index ?? 0) + download[0].length);
+            const execution = /(?:&&|;|\n)\s*(?:exec\s+|source\s+|\.\s+|(?:\.\/|\/tmp\/)[A-Za-z0-9_.-]+|(?:sh|bash|zsh|node|python\d*|ruby|perl)\s+[^\s;&|]+)/i.exec(afterDownload);
+            if (execution === null)
                 return undefined;
-            const match = context.window.match(/\b(?:curl|wget)\b[^\n]*(?:\n[^\n]*){0,2}\b(?:chmod\s+\+x|\.\/[A-Za-z0-9_.-]+|exec\s+|(?:sh|bash|node|python)\s+)[^\n]*/i);
-            return match === null ? undefined : hit(unverifiedArtifact, context, match);
+            const beforeExecution = afterDownload.slice(0, execution.index);
+            if (/\b(?:sha256sum\s+(?:-c|--check)|shasum\s+-a\s+256\s+(?:-c|--check)|cosign\s+verify|gpg\s+--verify|openssl\s+dgst\b[^\n]*(?:-verify|-signature))\b/i.test(beforeExecution))
+                return undefined;
+            const start = download.index ?? 0;
+            const length = download[0].length + execution.index + execution[0].length;
+            const match = /[\s\S]+/.exec(context.window.slice(start, start + length));
+            return match === null ? undefined : hit(unverifiedArtifact, context, Object.assign(match, { index: start }));
         },
     },
     {
         meta: mutableImage,
         detect(context) {
-            const match = context.line.match(/\b(?:image\s*:\s*|docker\s+(?:run|pull)\s+)([a-z0-9][a-z0-9._/-]*)(?::(latest|edge|main|master))?(?![^\n]*@sha256:)/i);
+            const match = context.line.match(/\b(?:image\s*:\s*|uses\s*:\s*docker:\/\/|docker\s+pull\s+)(["']?)([a-z0-9][a-z0-9._/:@-]*)\1/i);
             if (match === null)
                 return undefined;
-            const full = match[0];
-            const image = match[1] ?? "";
-            const explicitMutable = match[2] !== undefined;
-            const hasVersion = /:[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(full.trim());
-            if (!explicitMutable && hasVersion)
+            const reference = match[2] ?? "";
+            if (/@sha256:[a-f0-9]{64}$/i.test(reference))
                 return undefined;
-            if (["node", "python", "ruby", "ubuntu", "alpine"].includes(image) || image.includes("/"))
-                return hit(mutableImage, context, match);
-            return undefined;
+            return hit(mutableImage, context, match);
         },
     },
-    lineRule(inheritedEnvironment, /\b(?:inheritEnv(?:ironment)?|passEnv(?:ironment)?|forwardEnv(?:ironment)?|environment)\b["']?\s*[:=]\s*(?:true|["']?(?:\*|all)["']?|\[\s*["']\*["']\s*\])/i),
+    {
+        meta: inheritedEnvironment,
+        detect(context) {
+            const match = context.window.match(/\b(?:inheritEnv(?:ironment)?|passEnv(?:ironment)?|forwardEnv(?:ironment)?|environment|env)\b["']?\s*[:=]\s*(?:-\s*)?(?:["']?true["']?|["']?(?:\*|all)["']?|\[\s*["']?(?:\*|all)["']?\s*\])/i);
+            return match === null ? undefined : hit(inheritedEnvironment, context, match);
+        },
+    },
     {
         meta: broadFilesystem,
         detect(context) {
-            const match = context.line.match(/\b(?:filesystem|fileSystem|allowedPaths|writePaths|readPaths|allowedDirectories|workspaceAccess)\b["']?\s*[:=]\s*(?:["']?(?:\/|~|\*|\*\*|all|read-write)["']?|\[\s*["'](?:\/|~|\*|\*\*)["']\s*\])/i);
+            const match = context.window.match(/\b(?:filesystem|fileSystem|allowedPaths|writePaths|readPaths|allowedDirectories|additionalDirectories|workspaceAccess)\b["']?\s*[:=]\s*(?:-\s*)?(?:["']?(?:\/|~|\*|\*\*|all|read-write)["']?|\[\s*["']?(?:\/|~|\*|\*\*)["']?\s*\])/i);
             return match === null ? undefined : hit(broadFilesystem, context, match);
         },
     },
-    lineRule(insecureTls, /(?:\b(?:curl|wget)\b[^\n]*(?:\s-k(?:\s|$)|--insecure\b)|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0|GIT_SSL_NO_VERIFY\s*=\s*["']?(?:1|true))/i),
+    {
+        meta: insecureTls,
+        detect(context) {
+            const match = context.line.match(/(?:\bcurl\b[^\n]*(?:\s-k(?:\s|$)|--insecure\b)|\bwget\b[^\n]*--no-check-certificate\b|NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0|GIT_SSL_NO_VERIFY\s*=\s*["']?(?:1|true)|\bgit\s+-c\s+http\.sslVerify=false\b|\bnpm\s+config\s+set\s+strict-ssl\s+false\b)/i);
+            return match === null ? undefined : hit(insecureTls, context, throughLine(context, match));
+        },
+    },
     {
         meta: inlineSecret,
         detect(context) {
-            const match = context.line.match(/\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|private[_-]?key)\b["']?\s*[:=]\s*["']([^$<{][^"'\s]{11,})["']/i);
+            const match = context.line.match(/\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|secret|client[_-]?secret|private[_-]?key|credential)\b["']?\s*[:=]\s*(?:(["'])([^$<{][^"'\r\n]{11,})\1|([^"'$<{\s,#][^"'\s,#]{11,}))|\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})\b/i);
             if (match === null)
                 return undefined;
-            const value = match[1] ?? "";
-            if (/^(?:example|placeholder|changeme|redacted|dummy|test|your[_-])/i.test(value) || /^x+$/.test(value))
+            const value = match[2] ?? match[3] ?? "";
+            if (/^(?:example|placeholder|changeme|redacted|dummy|test|fake|sample|not-a-real|replace[_-]?me|your[_-])/i.test(value) || /^x+$/.test(value))
                 return undefined;
             return hit(inlineSecret, context, match);
         },
@@ -319,13 +425,15 @@ const rules = [
 ];
 export const RULES = Object.freeze(rules.map((rule) => Object.freeze(rule.meta)));
 export function runRules(input, policy) {
-    const lines = input.content.split(/\r?\n/);
+    const originalLines = input.content.split(/\r?\n/);
+    const lines = maskedContent(input).split(/\r?\n/);
     const hits = [];
     const seen = new Set();
     for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index] ?? "";
         const window = lines.slice(index, index + 3).join("\n");
-        const context = { input, lines, index, line, window, policy };
+        const originalWindow = originalLines.slice(index, index + 3).join("\n");
+        const context = { input, lines, index, line, window, originalWindow, policy };
         for (const rule of rules) {
             if (policy.disabledRules.includes(rule.meta.id))
                 continue;

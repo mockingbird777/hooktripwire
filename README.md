@@ -19,7 +19,7 @@ It analyzes configuration **as text and never executes a scanned command**. Ever
 ## Why HookTripwire
 
 - **Agent-aware detection.** Finds overbroad approvals, unrestricted network/filesystem grants, secret-bearing outbound requests, shell injection boundaries, mutable actions, and sensitive path writes.
-- **Useful in a terminal and in CI.** Emit readable terminal output, deterministic JSON, Markdown, SARIF 2.1, or a self-contained HTML report.
+- **Useful in a terminal and in CI.** Emit readable terminal output, structured JSON, Markdown, standards-valid SARIF 2.1, or a self-contained HTML report.
 - **Safe by construction.** No `eval`, subprocess execution, symlink traversal, remote fetches, or runtime dependencies. Inputs are bounded and evidence is redacted.
 - **Designed for gradual adoption.** Baselines capture accepted debt; a policy file controls severity, trusted actions, host allowlists, ignored paths, and file-size limits.
 - **Portable.** Strict TypeScript targeting Node.js 20+, with no platform-specific shell assumptions.
@@ -69,14 +69,14 @@ HookTripwire recursively discovers these text formats:
 
 - JSON and JSONC agent settings
 - YAML workflows and permission files
-- Markdown agent instructions
+- Markdown agent instructions such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, Cursor rules, and GitHub instruction files
 - shell scripts (`sh`, `bash`, and `zsh`)
 - TOML automation configuration
 - well-known files such as `Dockerfile`, `Makefile`, settings, hooks, and workflows
 
-This covers common shapes used by Claude Code, Cursor, VS Code, GitHub Actions, and vendor-neutral agent frameworks without depending on any one product schema.
+This covers common shapes used by Claude Code, Cursor, VS Code, GitHub Actions, and vendor-neutral agent frameworks without depending on any one product schema. Ordinary Markdown documentation is not selected during a directory scan, but any Markdown file can still be audited when passed as an explicit target.
 
-Symbolic links are reported and never followed. Binary files, dependencies, lockfiles, generated output, and files above the configured size limit are skipped safely.
+Symbolic links are reported and never followed. Binary files, dependencies, lockfiles, generated output, and files above the configured size limit are skipped safely. Comment-only JSONC, YAML, TOML, shell, and Markdown content is ignored while preserving exact source locations.
 
 ## Reports
 
@@ -97,7 +97,7 @@ hooktripwire . --format html --output hooktripwire-report.html
 hooktripwire . --fail-on none
 ```
 
-Supported formats are `terminal`, `json`, `markdown`, `sarif`, and `html`. Output files are created atomically with owner-only permissions. JSON and SARIF findings are sorted by path, line, column, and rule, and each finding has a stable 24-character fingerprint.
+Supported formats are `terminal`, `json`, `markdown`, `sarif`, and `html`. Output files are created atomically with owner-only permissions. JSON and SARIF findings are sorted by path, line, column, and rule, and each finding has a stable 24-character fingerprint. HTML reports include a restrictive Content Security Policy, and terminal, Markdown, HTML, JSON, and SARIF outputs neutralize their format-specific injection boundaries.
 
 Exit codes:
 
@@ -144,6 +144,8 @@ git add .hooktripwire-baseline.json
 ```
 
 Future scans automatically load that baseline. Existing fingerprints are suppressed; new findings still fail the build. Use `--include-suppressed` during cleanup work. Baselines contain only rule fingerprints—never source snippets or secrets.
+
+Policy and baseline files are security control-plane inputs: a policy can disable or lower a rule, and a baseline can accept an existing finding. When CI evaluates untrusted pull requests, protect these files with `CODEOWNERS`/required review or load them from a trusted base-branch checkout outside the proposed changes. Treat any policy or baseline change as a security-sensitive code change.
 
 ## GitHub Actions
 

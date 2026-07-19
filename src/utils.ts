@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { severities, type Finding, type Severity } from "./types.js";
 
-const SECRET_ASSIGNMENT = /\b(api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(["']?)([^\s,"'`}]+)/gi;
+const QUOTED_SECRET_ASSIGNMENT = /(["']?\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|secret|client[_-]?secret|private[_-]?key|credential)\b["']?\s*[:=]\s*)(["'])((?:\\.|[^\\\r\n])*?)\2/gi;
+const SECRET_ASSIGNMENT = /(["']?\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|token|password|passwd|secret|client[_-]?secret|private[_-]?key|credential)\b["']?\s*[:=]\s*)([^\s,"'`}]+)/gi;
 const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi;
+const BASIC = /\b(Basic\s+)[A-Za-z0-9+/=]{8,}/gi;
 const CREDENTIAL_URL = /(https?:\/\/[^\s:/]+:)([^@\s/]+)(@)/gi;
 const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
+const KNOWN_TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})\b/g;
 
 export function severityRank(severity: Severity): number {
   return severities.indexOf(severity);
@@ -25,15 +28,24 @@ export function fingerprint(ruleId: string, displayPath: string, line: number, n
 
 export function redact(value: string): string {
   return value
-    .replace(SECRET_ASSIGNMENT, (_match, name: string, quote: string) => `${name}=${quote || ""}<redacted>`)
+    .replace(QUOTED_SECRET_ASSIGNMENT, (_match, prefix: string, quote: string) => `${prefix}${quote}<redacted>${quote}`)
+    .replace(SECRET_ASSIGNMENT, "$1<redacted>")
     .replace(BEARER, "$1<redacted>")
+    .replace(BASIC, "$1<redacted>")
     .replace(CREDENTIAL_URL, "$1<redacted>$3")
-    .replace(PRIVATE_KEY, "-----BEGIN <redacted> PRIVATE KEY-----");
+    .replace(PRIVATE_KEY, "-----BEGIN <redacted> PRIVATE KEY-----")
+    .replace(KNOWN_TOKEN, "<redacted-token>");
 }
 
 export function compactEvidence(value: string, limit = 240): string {
-  const compact = redact(value.replace(/[\t\r]+/g, " ").trim()).replace(/\s{2,}/g, " ");
+  const compact = visibleControls(redact(value).replace(/\s+/gu, " ").trim());
   return compact.length <= limit ? compact : `${compact.slice(0, Math.max(0, limit - 1))}…`;
+}
+
+export function visibleControls(value: string): string {
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, (character) =>
+    `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 }
 
 export function escapeHtml(value: string): string {
@@ -46,11 +58,19 @@ export function escapeHtml(value: string): string {
 }
 
 export function escapeMarkdown(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("|", "\\|").replaceAll("\n", " ");
+  return escapeHtml(visibleControls(value))
+    .replaceAll("\\", "\\\\")
+    .replaceAll("|", "\\|")
+    .replace(/([`*_{}[\]()#+.!-])/g, "\\$1")
+    .replace(/[\r\n]+/g, " ");
 }
 
 export function toPosix(value: string): string {
   return value.split(path.sep).join("/");
+}
+
+export function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function normalizeRelative(root: string, absolute: string): string {
@@ -59,21 +79,35 @@ export function normalizeRelative(root: string, absolute: string): string {
 }
 
 export function globMatches(pattern: string, candidate: string): boolean {
-  const normalizedPattern = toPosix(pattern).replace(/^\.\//, "");
+  const normalizedPattern = toPosix(pattern).replace(/^\.\//, "").replace(/\/\*\*$/, "");
   const normalizedCandidate = toPosix(candidate).replace(/^\.\//, "");
-  if (normalizedPattern.endsWith("/**") && normalizedCandidate === normalizedPattern.slice(0, -3)) return true;
-  const escaped = normalizedPattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const regex = escaped.replaceAll("**", "\0").replaceAll("*", "[^/]*").replaceAll("?", "[^/]").replaceAll("\0", ".*");
-  return new RegExp(`^(?:${regex})(?:/.*)?$`).test(normalizedCandidate);
+  if (normalizedPattern.length === 0) return false;
+  let expression = "";
+  for (let index = 0; index < normalizedPattern.length; index += 1) {
+    const character = normalizedPattern[index] ?? "";
+    if (character === "*" && normalizedPattern[index + 1] === "*") {
+      if (normalizedPattern[index + 2] === "/") {
+        expression += "(?:.*/)?";
+        index += 2;
+      } else {
+        expression += ".*";
+        index += 1;
+      }
+    } else if (character === "*") expression += "[^/]*";
+    else if (character === "?") expression += "[^/]";
+    else expression += character.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  const anywhere = !normalizedPattern.includes("/");
+  return new RegExp(`${anywhere ? "(?:^|.*/)" : "^"}(?:${expression})(?:/.*)?$`).test(normalizedCandidate);
 }
 
 export function sortFindings(findings: readonly Finding[]): Finding[] {
   return [...findings].sort((a, b) =>
-    a.location.path.localeCompare(b.location.path) ||
+    compareText(a.location.path, b.location.path) ||
     a.location.line - b.location.line ||
     a.location.column - b.location.column ||
-    a.ruleId.localeCompare(b.ruleId) ||
-    a.fingerprint.localeCompare(b.fingerprint),
+    compareText(a.ruleId, b.ruleId) ||
+    compareText(a.fingerprint, b.fingerprint),
   );
 }
 
@@ -88,5 +122,10 @@ export function parseSeverity(value: string): Severity | undefined {
 }
 
 export function safeJson(value: unknown): string {
-  return JSON.stringify(value).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e").replaceAll("&", "\\u0026");
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }

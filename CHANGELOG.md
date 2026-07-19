@@ -16,7 +16,9 @@ All notable changes to HookTripwire are documented here. The project follows [Se
 - Safe recursive discovery without symlink traversal, binary parsing, or command execution.
 - Node.js library API, CLI failure thresholds, and atomic report output.
 - Interactive GitHub Pages security lab and complete contributor/security documentation.
-- Forty-nine initial tests across rules, false-positive boundaries, policies, discovery, reports, and CLI behavior.
+- Fifty-four tests across rules, false-positive boundaries, policies, discovery, reports, and CLI behavior.
+- Complete credential redaction, schema-valid SARIF, restrictive HTML CSP, randomized atomic output files, no-follow reads, format-specific output escaping, and strict policy validation.
+- Multiline YAML grants, unquoted shell evaluation, broad workflow permissions, mutable container actions, ordered integrity verification, and additional TLS and destructive-command variants.
 
 [Unreleased]: https://github.com/mockingbird777/hooktripwire/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/mockingbird777/hooktripwire/releases/tag/v0.1.0

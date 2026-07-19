@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { RULES } from "./rules.js";
 import { parseSeverity } from "./utils.js";
+const POLICY_FIELDS = new Set(["disabledRules", "severity", "allowHosts", "trustedActions", "ignorePaths", "maxFileBytes"]);
+const RULE_IDS = new Set(RULES.map((rule) => rule.id));
 export const DEFAULT_POLICY = Object.freeze({
     disabledRules: [],
     severity: {},
@@ -36,6 +39,8 @@ function severityMap(value) {
     }
     const result = {};
     for (const [id, raw] of Object.entries(value)) {
+        if (!RULE_IDS.has(id))
+            throw new Error(`Unknown rule in severity policy: ${id}`);
         if (typeof raw !== "string" || parseSeverity(raw) === undefined) {
             throw new Error(`Invalid severity for ${id}: ${String(raw)}`);
         }
@@ -44,16 +49,40 @@ function severityMap(value) {
     return result;
 }
 export function normalizePolicy(input = {}) {
+    for (const field of Object.keys(input)) {
+        if (!POLICY_FIELDS.has(field))
+            throw new Error(`Unknown policy field: ${field}`);
+    }
     const maxFileBytes = input.maxFileBytes ?? DEFAULT_POLICY.maxFileBytes;
     if (!Number.isSafeInteger(maxFileBytes) || maxFileBytes < 1 || maxFileBytes > 50 * 1024 * 1024) {
         throw new Error("Policy maxFileBytes must be an integer between 1 and 52428800");
     }
+    const disabledRules = strings(input.disabledRules, "disabledRules");
+    for (const id of disabledRules) {
+        if (!RULE_IDS.has(id))
+            throw new Error(`Unknown disabled rule: ${id}`);
+    }
+    const allowHosts = strings(input.allowHosts ?? DEFAULT_POLICY.allowHosts, "allowHosts").map((host) => host.toLowerCase());
+    for (const host of allowHosts) {
+        const candidate = host.startsWith("*.") ? host.slice(2) : host;
+        const domain = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+        if (host.length === 0 || (host !== "::1" && !domain.test(candidate))) {
+            throw new Error(`Invalid allowHosts entry: ${host}`);
+        }
+    }
+    const trustedActions = strings(input.trustedActions, "trustedActions");
+    if (trustedActions.some((action) => action.trim().length === 0))
+        throw new Error("Policy trustedActions entries cannot be empty");
+    const customIgnorePaths = strings(input.ignorePaths, "ignorePaths");
+    if (customIgnorePaths.some((pattern) => pattern.length === 0 || pattern.includes("\0"))) {
+        throw new Error("Policy ignorePaths entries must be non-empty paths without NUL bytes");
+    }
     return {
-        disabledRules: strings(input.disabledRules, "disabledRules"),
+        disabledRules,
         severity: severityMap(input.severity),
-        allowHosts: [...new Set([...(input.allowHosts ?? DEFAULT_POLICY.allowHosts)].map((host) => host.toLowerCase()))].sort(),
-        trustedActions: strings(input.trustedActions, "trustedActions"),
-        ignorePaths: [...new Set([...(DEFAULT_POLICY.ignorePaths), ...(input.ignorePaths ?? [])])].sort(),
+        allowHosts: [...new Set(allowHosts)].sort(),
+        trustedActions,
+        ignorePaths: [...new Set([...(DEFAULT_POLICY.ignorePaths), ...customIgnorePaths])].sort(),
         maxFileBytes,
     };
 }

