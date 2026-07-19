@@ -4,6 +4,11 @@ All notable changes to HookTripwire are documented here. The project follows [Se
 
 ## [Unreleased]
 
+### Fixed
+
+- Run compiled tests through a shell-independent Node.js runner so the Windows CI matrix does not depend on glob expansion.
+- Assert owner-only output modes on POSIX, where permission bits are enforced, while retaining the `0600` write mode in production.
+
 ## [0.1.0] - 2026-07-19
 
 ### Added

@@ -37,7 +37,7 @@ test("CLI failure thresholds respect effective severity", async () => {
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test("CLI atomically writes SARIF with private permissions", async () => {
+test("CLI atomically writes SARIF with private permissions on POSIX", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "hooktripwire-output-"));
   try {
     await writeFile(path.join(directory, "hook.sh"), "rm -rf /");
@@ -45,7 +45,9 @@ test("CLI atomically writes SARIF with private permissions", async () => {
     assert.equal(result.status, 0, result.stderr);
     const output = JSON.parse(await readFile(path.join(directory, "reports", "result.sarif"), "utf8")) as { version: string };
     assert.equal(output.version, "2.1.0");
-    assert.equal((await stat(path.join(directory, "reports", "result.sarif"))).mode & 0o777, 0o600);
+    if (process.platform !== "win32") {
+      assert.equal((await stat(path.join(directory, "reports", "result.sarif"))).mode & 0o777, 0o600);
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
