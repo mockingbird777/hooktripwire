@@ -1,0 +1,54 @@
+{
+  "name": "hooktripwire",
+  "version": "0.1.0",
+  "description": "Offline static security auditing for AI agent hooks and automation configuration.",
+  "type": "module",
+  "bin": {
+    "hooktripwire": "dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "prepare": "npm run build",
+    "test": "npm run build && tsc -p tsconfig.test.json && node --test --test-reporter=spec dist-test/test/*.test.js",
+    "test:coverage": "npm run build && tsc -p tsconfig.test.json && node --experimental-test-coverage --test dist-test/test/*.test.js",
+    "check": "npm run build && npm test"
+  },
+  "keywords": [
+    "ai-agents",
+    "security",
+    "static-analysis",
+    "cli",
+    "devsecops",
+    "claude-code",
+    "cursor",
+    "hooks",
+    "sarif"
+  ],
+  "author": "mockingbird777",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mockingbird777/hooktripwire.git"
+  },
+  "homepage": "https://mockingbird777.github.io/hooktripwire/",
+  "bugs": {
+    "url": "https://github.com/mockingbird777/hooktripwire/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

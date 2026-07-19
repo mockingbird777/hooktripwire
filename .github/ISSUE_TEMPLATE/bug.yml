@@ -1,0 +1,44 @@
+name: Bug report
+description: Report incorrect behavior, a crash, or a regression
+title: "bug: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve HookTripwire. Do not include live secrets. Report security vulnerabilities privately using SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: HookTripwire version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Linux, macOS, Windows, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal safe reproduction
+      description: Redact credentials and private paths. Include the command, input shape, expected result, and actual result.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Report format, policy settings, exit code, or other details that may help.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed live credentials and private data.
+          required: true

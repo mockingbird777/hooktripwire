@@ -1,0 +1,11 @@
+disabledRules: []
+allowHosts:
+  - api.github.com
+  - registry.npmjs.org
+trustedActions:
+  - actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+ignorePaths:
+  - fixtures/**
+severity:
+  HG007: high
+maxFileBytes: 1048576

@@ -1,0 +1,44 @@
+name: Detection rule proposal
+description: Propose a new signal or improve a false-positive boundary
+title: "rule: "
+labels: [rule, enhancement, triage]
+body:
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Security boundary
+      description: What trusted boundary is crossed, and why is it important for agent automation?
+    validations:
+      required: true
+  - type: textarea
+    id: unsafe
+    attributes:
+      label: Unsafe examples
+      description: Provide minimal, inert, fully redacted examples.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: safe
+    attributes:
+      label: Safe look-alikes
+      description: Which similar inputs must not produce a finding?
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: remediation
+    attributes:
+      label: Least-privilege remediation
+      description: What concrete change should HookTripwire recommend?
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Design constraints
+      options:
+        - label: The proposed rule does not require executing or fetching scanned content.
+          required: true
+        - label: Examples contain no live credentials or private data.
+          required: true

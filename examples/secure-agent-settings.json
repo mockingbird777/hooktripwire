@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "afterEdit": ["node", "./scripts/format.mjs", "--changed-only"]
+  },
+  "networkAccess": false,
+  "autoApprove": false,
+  "allowedPaths": ["./src", "./test"],
+  "inheritEnvironment": false
+}
