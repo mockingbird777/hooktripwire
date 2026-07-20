@@ -10,7 +10,11 @@
   [![Zero runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-48c9b0)](package.json)
 </div>
 
-AI coding tools are rapidly gaining hooks that run after edits, before commits, on notifications, and inside CI. Those hooks often sit in reviewed-looking JSON or YAML while quietly crossing the same security boundaries as executable code. HookTripwire makes those boundaries visible.
+![HookTripwire — audit AI-agent hooks before they run](assets/social-preview.svg)
+
+**HookTripwire answers one question before you trust an agent configuration: what can this automation destroy, expose, download, or silently approve?**
+
+AI coding tools are rapidly gaining hooks that run after edits, before commits, on notifications, and inside CI. Those hooks often sit in reviewed-looking JSON or YAML while quietly crossing the same security boundaries as executable code. HookTripwire turns those boundaries into precise findings with source locations and concrete least-privilege fixes.
 
 It analyzes configuration **as text and never executes a scanned command**. Everything stays on your machine: no account, no API key, no telemetry, and no model call.
 
@@ -26,7 +30,26 @@ It analyzes configuration **as text and never executes a scanned command**. Ever
 
 ## Quick start
 
-No installation is required:
+See a real audit in under a minute—no clone or input file required. The built-in fixture is intentionally unsafe, and `--fail-on none` keeps this guided demo successful:
+
+```bash
+npx --yes github:mockingbird777/hooktripwire --demo --fail-on none
+```
+
+```text
+✖ CRITICAL HG002  demo-agent-settings.json:3:19
+  Remote content piped to an interpreter
+  Fix: Download to a temporary file, verify a pinned checksum or signature…
+
+▲ HIGH     HG004  demo-agent-settings.json:6:4
+  Unrestricted network permission
+  Fix: Deny network access by default and list the exact hosts and protocols…
+
+HookTripwire scanned 1 file (257 bytes).
+7 findings: 3 critical, 4 high, 0 medium, 0 low, 0 info.
+```
+
+Then scan your repository; no installation is required:
 
 ```bash
 npx --yes github:mockingbird777/hooktripwire .
@@ -40,6 +63,17 @@ npx --yes github:mockingbird777/hooktripwire \
 ```
 
 HookTripwire exits with `1` when it finds an unsuppressed `high` or `critical` issue, so the default command is CI-ready.
+
+## Where it fits
+
+| Approach | Best at | What HookTripwire adds |
+|---|---|---|
+| Grep or custom regex | A known string in a known file | Context-aware security rules, safe file discovery, source locations, redaction, and tested false-positive boundaries |
+| General-purpose SAST | Application-language data and control flow | Agent-specific approvals, hooks, tool grants, mutable Actions/images, environment inheritance, and sensitive paths |
+| Runtime sandboxing | Limiting damage while automation executes | A reviewable, deterministic gate **before** a hook or workflow is trusted |
+| HookTripwire | Auditing agent automation configuration | Offline CLI, policies, baselines, SARIF/HTML, and no scanned-command execution |
+
+HookTripwire complements SAST, secret scanning, and sandboxes; it is not a runtime containment system or proof that a hook is safe.
 
 ## What it detects
 
@@ -149,6 +183,30 @@ Policy and baseline files are security control-plane inputs: a policy can disabl
 
 ## GitHub Actions
 
+The repository includes a zero-install composite Action backed by the same offline CLI. Once this change is included in a release tag, adoption is one step:
+
+```yaml
+name: Agent hook security
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: mockingbird777/hooktripwire@v0.2.0
+        with:
+          target: .
+          fail-on: high
+```
+
+For high-assurance workflows, pin the Action to the release's full commit SHA. Optional inputs include `format`, `output`, `policy`, `baseline`, and `include-suppressed`; input values are passed as arguments without shell evaluation.
+
+If your organization does not permit third-party composite Actions, run the CLI directly:
+
 ```yaml
 name: Agent hook security
 on: [push, pull_request]
@@ -212,6 +270,15 @@ npm audit
 The test suite covers rule true/false positives, allowlists, baselines, deterministic ordering, symlink and binary boundaries, secret redaction, SARIF structure, HTML escaping, policy validation, atomic file output, and CLI exit codes.
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and open an issue when proposing a new detection rule so its threat model and false-positive boundary can be reviewed first.
+
+## Roadmap and good first contributions
+
+- More schema-aware explanations for popular agent configuration formats without coupling the engine to one vendor
+- Optional diff-only reporting for pull requests
+- A reusable SARIF upload example for repositories that enable GitHub code scanning
+- Community fixtures for real-world safe look-alikes and false-positive regression tests
+
+Good first contributions include a minimized configuration fixture, a safe look-alike test for an existing rule, or a report accessibility improvement. Use the [rule proposal template](https://github.com/mockingbird777/hooktripwire/issues/new?template=rule.yml) for new detections and the [contributor guide](CONTRIBUTING.md) for the local workflow.
 
 ## License
 

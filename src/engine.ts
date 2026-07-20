@@ -5,7 +5,7 @@ import { RULES, runRules } from "./rules.js";
 import { fingerprint, sortFindings } from "./utils.js";
 import type { AuditRequest, Finding, Policy, ScanInput, ScanResult } from "./types.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const metadata = new Map(RULES.map((rule) => [rule.id, rule]));
 
 function effectivePolicy(input: AuditRequest["policy"]): Policy {

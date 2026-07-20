@@ -4,10 +4,18 @@ All notable changes to HookTripwire are documented here. The project follows [Se
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-20
+
 ### Fixed
 
 - Run compiled tests through a shell-independent Node.js runner so the Windows CI matrix does not depend on glob expansion.
 - Assert owner-only output modes on POSIX, where permission bits are enforced, while retaining the `0600` write mode in production.
+
+### Added
+
+- Add a deterministic `--demo` scan so first-time users can see actionable findings without preparing input files.
+- Add a zero-install composite GitHub Action backed by the same offline CLI and covered by a workflow smoke test.
+- Add a 1280×640 repository social preview and a first-visit README experience built around verified demo output.
 
 ## [0.1.0] - 2026-07-19
 
@@ -25,5 +33,6 @@ All notable changes to HookTripwire are documented here. The project follows [Se
 - Complete credential redaction, schema-valid SARIF, restrictive HTML CSP, randomized atomic output files, no-follow reads, format-specific output escaping, and strict policy validation.
 - Multiline YAML grants, unquoted shell evaluation, broad workflow permissions, mutable container actions, ordered integrity verification, and additional TLS and destructive-command variants.
 
-[Unreleased]: https://github.com/mockingbird777/hooktripwire/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mockingbird777/hooktripwire/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mockingbird777/hooktripwire/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mockingbird777/hooktripwire/releases/tag/v0.1.0

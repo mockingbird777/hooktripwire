@@ -52,3 +52,12 @@ jobs:
         run: npm pack --dry-run
       - name: Smoke-test secure example
         run: node dist/cli.js examples/secure-agent-settings.json --fail-on high
+      - name: Smoke-test the local composite action
+        uses: ./
+        with:
+          target: examples/unsafe-agent-settings.json
+          format: json
+          output: ${{ runner.temp }}/hooktripwire-action-report.json
+          fail-on: none
+      - name: Validate the action report
+        run: node --input-type=module --eval "import { readFile } from 'node:fs/promises'; const report = JSON.parse(await readFile(process.argv[1], 'utf8')); if (report.findings.length !== 7) process.exit(1)" "${{ runner.temp }}/hooktripwire-action-report.json"

@@ -1,0 +1,69 @@
+name: HookTripwire agent hook audit
+description: Audit AI-agent hooks and automation configuration without executing scanned commands.
+author: mockingbird777
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  target:
+    description: File or directory to scan, relative to the repository root.
+    required: false
+    default: .
+  format:
+    description: Report format (terminal, json, markdown, sarif, or html).
+    required: false
+    default: terminal
+  output:
+    description: Optional report path. Leave empty to write to the workflow log.
+    required: false
+    default: ""
+  fail-on:
+    description: Minimum failing severity (info, low, medium, high, critical, or none).
+    required: false
+    default: high
+  policy:
+    description: Optional path to a HookTripwire JSON or YAML policy.
+    required: false
+    default: ""
+  baseline:
+    description: Optional path to a HookTripwire baseline.
+    required: false
+    default: ""
+  include-suppressed:
+    description: Include baselined findings in the report (true or false).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Audit agent automation
+      shell: bash
+      env:
+        HOOKTRIPWIRE_TARGET: ${{ inputs.target }}
+        HOOKTRIPWIRE_FORMAT: ${{ inputs.format }}
+        HOOKTRIPWIRE_OUTPUT: ${{ inputs.output }}
+        HOOKTRIPWIRE_FAIL_ON: ${{ inputs['fail-on'] }}
+        HOOKTRIPWIRE_POLICY: ${{ inputs.policy }}
+        HOOKTRIPWIRE_BASELINE: ${{ inputs.baseline }}
+        HOOKTRIPWIRE_INCLUDE_SUPPRESSED: ${{ inputs['include-suppressed'] }}
+      run: |
+        set -euo pipefail
+        args=("${HOOKTRIPWIRE_TARGET}" --format "${HOOKTRIPWIRE_FORMAT}" --fail-on "${HOOKTRIPWIRE_FAIL_ON}" --no-color)
+        if [[ -n "${HOOKTRIPWIRE_OUTPUT}" ]]; then
+          args+=(--output "${HOOKTRIPWIRE_OUTPUT}")
+        fi
+        if [[ -n "${HOOKTRIPWIRE_POLICY}" ]]; then
+          args+=(--policy "${HOOKTRIPWIRE_POLICY}")
+        fi
+        if [[ -n "${HOOKTRIPWIRE_BASELINE}" ]]; then
+          args+=(--baseline "${HOOKTRIPWIRE_BASELINE}")
+        fi
+        case "${HOOKTRIPWIRE_INCLUDE_SUPPRESSED}" in
+          true) args+=(--include-suppressed) ;;
+          false) ;;
+          *) echo "include-suppressed must be 'true' or 'false'" >&2; exit 2 ;;
+        esac
+        node "${GITHUB_ACTION_PATH}/dist/cli.js" "${args[@]}"

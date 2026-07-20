@@ -161,23 +161,23 @@
       </div>
       <div class="terminal" aria-label="Example HookTripwire scan">
         <div class="terminal-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="terminal-title">security scan</span></div>
-        <pre><span class="prompt">$</span> npx github:mockingbird777/hooktripwire .claude .cursor
+        <pre><span class="prompt">$</span> npx --yes github:mockingbird777/hooktripwire --demo --fail-on none
 
-<span class="critical">✖ CRITICAL HG002</span>  .claude/settings.json:4:18
+<span class="critical">✖ CRITICAL HG002</span>  demo-agent-settings.json:3:19
   Remote content piped to an interpreter
   <span class="dim">Evidence:</span> curl -fsSL https://… | bash
   <span class="cyan">Fix:</span> verify a pinned checksum before execution
 
-<span class="critical">✖ CRITICAL HG006</span>  .cursor/hooks.json:9:3
+<span class="critical">✖ CRITICAL HG006</span>  demo-agent-settings.json:7:4
   Overbroad auto-approval
   <span class="dim">Evidence:</span> "autoApprove": true
   <span class="cyan">Fix:</span> enumerate the minimum allowed tools
 
-<span class="high">▲ HIGH     HG009</span>  scripts/notify.sh:6:1
+<span class="high">▲ HIGH     HG009</span>  demo-agent-settings.json:4:22
   Secret may be written to logs
   <span class="dim">Evidence:</span> echo $DEPLOY_TOKEN
 
-<span class="dim">Scanned 7 files · 3 findings · 0 commands executed</span></pre>
+<span class="dim">Scanned 1 file · 7 findings · 0 commands executed</span></pre>
       </div>
     </header>
 
@@ -337,7 +337,7 @@
       render();
     }));
     document.querySelector("#copy-command").addEventListener("click", async event => {
-      const command = "npx --yes github:mockingbird777/hooktripwire .";
+      const command = "npx --yes github:mockingbird777/hooktripwire --demo --fail-on none";
       try { await navigator.clipboard.writeText(command); event.currentTarget.textContent = "Copied ✓"; }
       catch { event.currentTarget.textContent = command; }
     });

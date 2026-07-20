@@ -3,7 +3,7 @@ import { discover } from "./discovery.js";
 import { DEFAULT_POLICY, normalizePolicy } from "./policy.js";
 import { RULES, runRules } from "./rules.js";
 import { fingerprint, sortFindings } from "./utils.js";
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const metadata = new Map(RULES.map((rule) => [rule.id, rule]));
 function effectivePolicy(input) {
     return normalizePolicy(input ?? DEFAULT_POLICY);

@@ -12,9 +12,30 @@ function run(args: string[], cwd = process.cwd()) {
 }
 
 test("version, help, and rule catalog are available", () => {
-  assert.equal(run(["--version"]).stdout.trim(), "0.1.0");
+  assert.equal(run(["--version"]).stdout.trim(), "0.2.0");
   assert.match(run(["--help"]).stdout, /Usage:/);
   assert.match(run(["--list-rules"]).stdout, /HG015/);
+});
+
+test("built-in demo produces an immediate actionable audit", () => {
+  const result = run(["--demo", "--no-color", "--fail-on", "none"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /demo-agent-settings\.json/u);
+  assert.match(result.stdout, /HG002/u);
+  assert.match(result.stdout, /7 findings: 3 critical, 4 high/u);
+  assert.equal(run(["--demo", "."]).status, 2);
+});
+
+test("built-in demo ignores ambient policy unless it is explicitly requested", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "hooktripwire-demo-"));
+  try {
+    await writeFile(path.join(directory, ".hooktripwire.json"), JSON.stringify({ disabledRules: ["HG002"] }));
+    const isolated = run(["--demo", "--no-color", "--fail-on", "none"], directory);
+    assert.match(isolated.stdout, /7 findings: 3 critical, 4 high/u);
+    const explicit = run(["--demo", "--policy", ".hooktripwire.json", "--format", "json", "--fail-on", "none"], directory);
+    const report = JSON.parse(explicit.stdout) as { findings: Array<{ ruleId: string }> };
+    assert.equal(report.findings.some((finding) => finding.ruleId === "HG002"), false);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test("CLI exits one at threshold and zero when disabled", async () => {
