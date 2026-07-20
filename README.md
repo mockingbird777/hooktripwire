@@ -14,11 +14,11 @@
 
 **HookTripwire answers one question before you trust an agent configuration: what can this automation destroy, expose, download, or silently approve?**
 
-AI coding tools are rapidly gaining hooks that run after edits, before commits, on notifications, and inside CI. Those hooks often sit in reviewed-looking JSON or YAML while quietly crossing the same security boundaries as executable code. HookTripwire turns those boundaries into precise findings with source locations and concrete least-privilege fixes.
+AI coding tools—including Claude Code, Cursor, VS Code, and GitHub Actions—are rapidly gaining hooks that run after edits, before commits, on notifications, and inside CI. Those hooks often sit in reviewed-looking JSON or YAML while quietly crossing the same security boundaries as executable code. HookTripwire turns those boundaries into precise findings with source locations and concrete least-privilege fixes.
 
 It analyzes configuration **as text and never executes a scanned command**. Everything stays on your machine: no account, no API key, no telemetry, and no model call.
 
-> [Explore the interactive security lab](https://mockingbird777.github.io/hooktripwire/) to see risky and hardened agent configurations side by side.
+> [Explore the interactive security lab](https://mockingbird777.github.io/hooktripwire/) to see risky and hardened agent configurations side by side, or [add the reusable GitHub Action](#github-actions) to audit every pull request.
 
 ## Why HookTripwire
 
@@ -48,6 +48,8 @@ npx --yes github:mockingbird777/hooktripwire --demo --fail-on none
 HookTripwire scanned 1 file (257 bytes).
 7 findings: 3 critical, 4 high, 0 medium, 0 low, 0 info.
 ```
+
+If HookTripwire catches a risk you would not want to discover in production, [star the repository](https://github.com/mockingbird777/hooktripwire) to keep it close and help other maintainers find the audit before their hooks run.
 
 Then scan your repository; no installation is required:
 
