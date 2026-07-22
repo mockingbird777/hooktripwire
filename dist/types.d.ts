@@ -52,10 +52,30 @@ export interface ScanResult {
     readonly findings: readonly Finding[];
     readonly suppressedCount: number;
     readonly skippedFiles: readonly SkippedFile[];
+    readonly hookPaths?: readonly HookPath[];
 }
 export interface SkippedFile {
     readonly path: string;
     readonly reason: string;
+}
+export type HookLauncher = "direct" | "sh" | "bash" | "zsh" | "node" | "python" | "source";
+export type HookPathIncompleteReason = "cycle" | "depth-limit" | "dynamic-reference" | "outside-root" | "non-local-reference" | "symbolic-link" | "missing-file" | "ignored" | "unreadable" | "command-limit" | "file-limit" | "read-limit" | "edge-limit" | "path-limit";
+export interface HookEdge {
+    readonly from: Location;
+    readonly launcher: HookLauncher;
+    /** A redacted, bounded literal path or the marker `<dynamic>`. */
+    readonly reference: string;
+    /** Present only when the reference was safely resolved inside the audit root. */
+    readonly to?: string;
+}
+/** A statically provable local path from one hook command to a terminal script. */
+export interface HookPath {
+    readonly entry: Location;
+    readonly hook: string;
+    readonly edges: readonly HookEdge[];
+    readonly leaf?: string;
+    readonly findingFingerprints: readonly string[];
+    readonly incomplete?: HookPathIncompleteReason;
 }
 export type OutputFormat = "terminal" | "json" | "markdown" | "sarif" | "html";
 export interface AuditOptions {
@@ -64,6 +84,8 @@ export interface AuditOptions {
     readonly baseline?: Baseline;
     readonly includeSuppressed?: boolean;
     readonly now?: string;
+    readonly mapHooks?: boolean;
+    readonly maxHookDepth?: number;
 }
 export interface AuditRequest extends AuditOptions {
     readonly targets: readonly string[];

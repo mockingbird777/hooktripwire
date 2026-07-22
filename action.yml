@@ -35,6 +35,14 @@ inputs:
     description: Include baselined findings in the report (true or false).
     required: false
     default: "false"
+  map-hooks:
+    description: Map statically provable local hook-to-script paths (true or false).
+    required: false
+    default: "false"
+  max-hook-depth:
+    description: Maximum local script depth when map-hooks is true (1 to 32).
+    required: false
+    default: "8"
 
 runs:
   using: composite
@@ -49,9 +57,11 @@ runs:
         HOOKTRIPWIRE_POLICY: ${{ inputs.policy }}
         HOOKTRIPWIRE_BASELINE: ${{ inputs.baseline }}
         HOOKTRIPWIRE_INCLUDE_SUPPRESSED: ${{ inputs['include-suppressed'] }}
+        HOOKTRIPWIRE_MAP_HOOKS: ${{ inputs['map-hooks'] }}
+        HOOKTRIPWIRE_MAX_HOOK_DEPTH: ${{ inputs['max-hook-depth'] }}
       run: |
         set -euo pipefail
-        args=("${HOOKTRIPWIRE_TARGET}" --format "${HOOKTRIPWIRE_FORMAT}" --fail-on "${HOOKTRIPWIRE_FAIL_ON}" --no-color)
+        args=(--format "${HOOKTRIPWIRE_FORMAT}" --fail-on "${HOOKTRIPWIRE_FAIL_ON}" --no-color)
         if [[ -n "${HOOKTRIPWIRE_OUTPUT}" ]]; then
           args+=(--output "${HOOKTRIPWIRE_OUTPUT}")
         fi
@@ -66,4 +76,10 @@ runs:
           false) ;;
           *) echo "include-suppressed must be 'true' or 'false'" >&2; exit 2 ;;
         esac
+        case "${HOOKTRIPWIRE_MAP_HOOKS}" in
+          true) args+=(--map-hooks --max-hook-depth "${HOOKTRIPWIRE_MAX_HOOK_DEPTH}") ;;
+          false) ;;
+          *) echo "map-hooks must be 'true' or 'false'" >&2; exit 2 ;;
+        esac
+        args+=(-- "${HOOKTRIPWIRE_TARGET}")
         node "${GITHUB_ACTION_PATH}/dist/cli.js" "${args[@]}"

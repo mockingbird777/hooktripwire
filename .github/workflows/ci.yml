@@ -59,5 +59,7 @@ jobs:
           format: json
           output: ${{ runner.temp }}/hooktripwire-action-report.json
           fail-on: none
+          map-hooks: true
+          max-hook-depth: 8
       - name: Validate the action report
-        run: node --input-type=module --eval "import { readFile } from 'node:fs/promises'; const report = JSON.parse(await readFile(process.argv[1], 'utf8')); if (report.findings.length !== 7) process.exit(1)" "${{ runner.temp }}/hooktripwire-action-report.json"
+        run: node --input-type=module --eval "import { readFile } from 'node:fs/promises'; const report = JSON.parse(await readFile(process.argv[1], 'utf8')); if (report.findings.length !== 7 || !Array.isArray(report.hookPaths)) process.exit(1)" "${{ runner.temp }}/hooktripwire-action-report.json"

@@ -4,6 +4,11 @@ All notable changes to HookTripwire are documented here. The project follows [Se
 
 ## [Unreleased]
 
+### Added
+
+- Add opt-in HookGraph analysis with `--map-hooks` and bounded `--max-hook-depth` traversal. It maps statically provable JSON/JSONC/YAML hook commands through literal repository-local shell, Node.js, Python, and sourced-script references, associates leaf findings, and reports dynamic, missing, cyclic, depth-limited, ignored, unreadable, symlinked, and out-of-root boundaries without executing or fetching content.
+- Expose HookGraph through the library result, terminal, JSON, Markdown, self-contained HTML, built-in demo, and composite Action while retaining unchanged output when mapping is not requested.
+
 ## [0.2.0] - 2026-07-20
 
 ### Fixed

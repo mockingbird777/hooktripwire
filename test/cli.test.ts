@@ -14,6 +14,7 @@ function run(args: string[], cwd = process.cwd()) {
 test("version, help, and rule catalog are available", () => {
   assert.equal(run(["--version"]).stdout.trim(), "0.2.0");
   assert.match(run(["--help"]).stdout, /Usage:/);
+  assert.match(run(["--help"]).stdout, /--map-hooks/u);
   assert.match(run(["--list-rules"]).stdout, /HG015/);
 });
 
@@ -24,6 +25,27 @@ test("built-in demo produces an immediate actionable audit", () => {
   assert.match(result.stdout, /HG002/u);
   assert.match(result.stdout, /7 findings: 3 critical, 4 high/u);
   assert.equal(run(["--demo", "."]).status, 2);
+  const mapped = run(["--demo", "--map-hooks", "--no-color", "--fail-on", "none"]);
+  assert.equal(mapped.status, 0, mapped.stderr);
+  assert.match(mapped.stdout, /Incomplete: dynamic-reference/u);
+});
+
+test("CLI maps local hook scripts and validates depth options", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "hooktripwire-cli-map-"));
+  try {
+    await writeFile(path.join(directory, "hooks.json"), JSON.stringify({ hooks: { BeforeCommit: { command: "bash ./danger.sh" } } }));
+    await writeFile(path.join(directory, "danger.sh"), "rm -rf /\n");
+    const mapped = run(["hooks.json", "--map-hooks", "--max-hook-depth", "1", "--format", "json", "--fail-on", "none"], directory);
+    assert.equal(mapped.status, 0, mapped.stderr);
+    const report = JSON.parse(mapped.stdout) as { hookPaths: Array<{ leaf?: string; findingFingerprints: string[] }>; findings: Array<{ ruleId: string }> };
+    assert.equal(report.hookPaths[0]?.leaf, "danger.sh");
+    assert.equal(report.hookPaths[0]?.findingFingerprints.length, 1);
+    assert.equal(report.findings[0]?.ruleId, "HG001");
+    assert.equal(run(["hooks.json", "--max-hook-depth", "2"], directory).status, 2);
+    assert.equal(run(["hooks.json", "--map-hooks", "--max-hook-depth", "0"], directory).status, 2);
+    assert.equal(run(["hooks.json", "--map-hooks", "--max-hook-depth", "33"], directory).status, 2);
+    assert.equal(run(["hooks.json", "--map-hooks", "--max-hook-depth", "1.5"], directory).status, 2);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test("built-in demo ignores ambient policy unless it is explicitly requested", async () => {

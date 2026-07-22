@@ -23,6 +23,7 @@ It analyzes configuration **as text and never executes a scanned command**. Ever
 ## Why HookTripwire
 
 - **Agent-aware detection.** Finds overbroad approvals, unrestricted network/filesystem grants, secret-bearing outbound requests, shell injection boundaries, mutable actions, and sensitive path writes.
+- **Hook-to-script provenance.** Opt-in HookGraph analysis connects a configured hook to statically provable repository-local scripts and the findings at each terminal path.
 - **Useful in a terminal and in CI.** Emit readable terminal output, structured JSON, Markdown, standards-valid SARIF 2.1, or a self-contained HTML report.
 - **Safe by construction.** No `eval`, subprocess execution, symlink traversal, remote fetches, or runtime dependencies. Inputs are bounded and evidence is redacted.
 - **Designed for gradual adoption.** Baselines capture accepted debt; a policy file controls severity, trusted actions, host allowlists, ignored paths, and file-size limits.
@@ -45,7 +46,7 @@ npx --yes github:mockingbird777/hooktripwire --demo --fail-on none
   Unrestricted network permission
   Fix: Deny network access by default and list the exact hosts and protocols…
 
-HookTripwire scanned 1 file (257 bytes).
+HookTripwire scanned 1 file (280 bytes).
 7 findings: 3 critical, 4 high, 0 medium, 0 low, 0 info.
 ```
 
@@ -55,6 +56,12 @@ Then scan your repository; no installation is required:
 
 ```bash
 npx --yes github:mockingbird777/hooktripwire .
+```
+
+Ask HookGraph to map literal local script references as well. The demo intentionally includes a dynamic script target so the report shows the boundary it refuses to guess:
+
+```bash
+npx --yes github:mockingbird777/hooktripwire --demo --map-hooks --fail-on none
 ```
 
 Scan the places where agent automation usually lives:
@@ -99,6 +106,21 @@ HookTripwire complements SAST, secret scanning, and sandboxes; it is not a runti
 
 Rules are deliberately evidence-based. For example, an ordinary download is not treated as a remote execution pipe, a SHA-pinned action is accepted, placeholder credentials are ignored, and outbound requests to explicitly allowed hosts do not trigger the exfiltration heuristic.
 
+## HookGraph: local execution provenance
+
+Flat findings can show that a script is dangerous without showing which agent event reaches it. HookGraph adds that missing review context:
+
+```bash
+hooktripwire . --map-hooks
+hooktripwire . --map-hooks --max-hook-depth 12 --format html --output hookgraph.html
+```
+
+It reads hook commands under `hooks` in JSON, JSONC, and a conservative YAML subset, then follows only literal repository-local targets invoked directly or through `sh`, `bash`, `zsh`, `node`, `python`, and `source`. Shell and sourced files can lead to another local script; Node.js and Python targets are scanned as leaves without guessing at language-level control flow.
+
+Every relative target is resolved from the audit root. HookGraph checks lexical and canonical containment, rejects symbolic links in any path component, uses the scanner's bounded no-follow reads, and never expands variables, command substitutions, globs, URLs, or shell `-c` strings. Those boundaries appear as explicit incomplete paths instead of being silently ignored. Cycles and the depth limit are reported the same way.
+
+The default maximum depth is 8 and can be set from 1 through 32. Graph construction is additionally bounded to 512 hook entries, 512 newly referenced files, 4,096 traversed edges, 1,000 reported paths, 128 references per source, 16 KiB per logical command, and 16 MiB of extra input. HookGraph is a map of **statically provable references**, not a complete prediction of runtime execution.
+
 ## Inputs
 
 HookTripwire recursively discovers these text formats:
@@ -128,6 +150,9 @@ hooktripwire .github/workflows --format sarif --output hooktripwire.sarif
 
 # Attach a single-file report to a security review
 hooktripwire . --format html --output hooktripwire-report.html
+
+# Add statically provable hook-to-script paths to any report
+hooktripwire . --map-hooks --format markdown --output hook-review.md
 
 # Never fail the current command, regardless of findings
 hooktripwire . --fail-on none
@@ -205,7 +230,7 @@ jobs:
           fail-on: high
 ```
 
-For high-assurance workflows, pin the Action to the release's full commit SHA. Optional inputs include `format`, `output`, `policy`, `baseline`, and `include-suppressed`; input values are passed as arguments without shell evaluation.
+For high-assurance workflows, pin the Action to the release's full commit SHA. Optional inputs include `format`, `output`, `policy`, `baseline`, `include-suppressed`, `map-hooks`, and `max-hook-depth`; input values are passed as arguments without shell evaluation.
 
 If your organization does not permit third-party composite Actions, run the CLI directly:
 
@@ -240,6 +265,8 @@ const result = await audit({
   targets: [".claude", ".github/workflows"],
   cwd: process.cwd(),
   policy: { allowHosts: ["api.github.com"] },
+  mapHooks: true,
+  maxHookDepth: 8,
 });
 
 process.stdout.write(formatSarif(result));
@@ -254,6 +281,7 @@ HookTripwire is a static heuristic analyzer, not a sandbox or a proof that a hoo
 - execute or source scanned commands;
 - parse shell through a shell process;
 - resolve or download remote actions and scripts;
+- expand dynamic hook targets or infer Node.js/Python control flow;
 - follow symlinks;
 - claim to identify every obfuscated or runtime-generated payload.
 
@@ -269,7 +297,7 @@ npm test
 npm audit
 ```
 
-The test suite covers rule true/false positives, allowlists, baselines, deterministic ordering, symlink and binary boundaries, secret redaction, SARIF structure, HTML escaping, policy validation, atomic file output, and CLI exit codes.
+The test suite covers rule true/false positives, HookGraph traversal and hard limits, allowlists, baselines, deterministic ordering, symlink and binary boundaries, secret redaction, SARIF structure, HTML escaping, policy validation, atomic file output, and CLI exit codes.
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and open an issue when proposing a new detection rule so its threat model and false-positive boundary can be reviewed first.
 

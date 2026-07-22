@@ -34,6 +34,49 @@ function candidate(file) {
     }
     return EXTENSIONS.has(path.extname(lower)) || KNOWN_FILES.has(base) || /(?:hook|agent|workflow|settings|permission)/i.test(base);
 }
+/**
+ * Read one already-resolved file without following its final symbolic link.
+ * Callers that accept graph references must additionally validate root
+ * containment and every parent path component before calling this helper.
+ */
+export async function safeReadFile(absolute, displayPath, policy, expected) {
+    let handle;
+    try {
+        const noFollow = process.platform === "win32" ? 0 : constants.O_NOFOLLOW;
+        handle = await open(absolute, constants.O_RDONLY | noFollow);
+        const stat = await handle.stat();
+        if (!stat.isFile() || (expected !== undefined && (stat.dev !== expected.device || stat.ino !== expected.inode))) {
+            return { skipped: { path: displayPath, reason: "changed during scan" }, bytes: 0 };
+        }
+        if (stat.size > policy.maxFileBytes) {
+            return { skipped: { path: displayPath, reason: `larger than ${policy.maxFileBytes} bytes` }, bytes: 0 };
+        }
+        const buffer = await readBounded(handle, policy.maxFileBytes);
+        if (buffer.byteLength > policy.maxFileBytes) {
+            return { skipped: { path: displayPath, reason: `grew larger than ${policy.maxFileBytes} bytes during scan` }, bytes: 0 };
+        }
+        if (buffer.includes(0))
+            return { skipped: { path: displayPath, reason: "binary content" }, bytes: 0 };
+        let content;
+        try {
+            content = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+        }
+        catch {
+            return { skipped: { path: displayPath, reason: "binary or non-UTF-8 content" }, bytes: 0 };
+        }
+        return { input: { path: absolute, displayPath, content }, bytes: buffer.byteLength };
+    }
+    catch (error) {
+        const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
+        if (code === "ELOOP" || code === "EMLINK") {
+            return { skipped: { path: displayPath, reason: "symbolic link" }, bytes: 0 };
+        }
+        throw error;
+    }
+    finally {
+        await handle?.close();
+    }
+}
 export async function discover(targets, cwd, policy) {
     const root = path.resolve(cwd);
     const found = [];
@@ -82,49 +125,12 @@ export async function discover(targets, cwd, policy) {
     let bytes = 0;
     for (const entry of found) {
         const display = normalizeRelative(root, entry.absolute);
-        let handle;
-        try {
-            const noFollow = process.platform === "win32" ? 0 : constants.O_NOFOLLOW;
-            handle = await open(entry.absolute, constants.O_RDONLY | noFollow);
-            const stat = await handle.stat();
-            if (!stat.isFile() || stat.dev !== entry.device || stat.ino !== entry.inode) {
-                skipped.push({ path: display, reason: "changed during scan" });
-                continue;
-            }
-            if (stat.size > policy.maxFileBytes) {
-                skipped.push({ path: display, reason: `larger than ${policy.maxFileBytes} bytes` });
-                continue;
-            }
-            const buffer = await readBounded(handle, policy.maxFileBytes);
-            if (buffer.byteLength > policy.maxFileBytes) {
-                skipped.push({ path: display, reason: `grew larger than ${policy.maxFileBytes} bytes during scan` });
-                continue;
-            }
-            if (buffer.includes(0)) {
-                skipped.push({ path: display, reason: "binary content" });
-                continue;
-            }
-            let content;
-            try {
-                content = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-            }
-            catch {
-                skipped.push({ path: display, reason: "binary or non-UTF-8 content" });
-                continue;
-            }
-            bytes += buffer.byteLength;
-            files.push({ path: entry.absolute, displayPath: display, content });
-        }
-        catch (error) {
-            const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
-            if (code === "ELOOP" || code === "EMLINK")
-                skipped.push({ path: display, reason: "symbolic link" });
-            else
-                throw error;
-        }
-        finally {
-            await handle?.close();
-        }
+        const read = await safeReadFile(entry.absolute, display, policy, { device: entry.device, inode: entry.inode });
+        if (read.input !== undefined)
+            files.push(read.input);
+        if (read.skipped !== undefined)
+            skipped.push(read.skipped);
+        bytes += read.bytes;
     }
     skipped.sort((a, b) => compareText(a.path, b.path));
     return { files, skipped, bytes };

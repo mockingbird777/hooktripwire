@@ -15,6 +15,7 @@ function resultFor(source: string, file = "hook.sh"): ScanResult {
 test("JSON report is machine-readable", () => {
   const parsed = JSON.parse(formatJson(resultFor("rm -rf /"))) as { findings: unknown[] };
   assert.equal(parsed.findings.length, 1);
+  assert.equal("hookPaths" in parsed, false);
 });
 
 test("SARIF 2.1 report includes fingerprints and regions", () => {
@@ -72,4 +73,56 @@ test("empty reports render in every human format", () => {
   assert.ok(formatTerminal(result).includes("0 findings"));
   assert.ok(formatMarkdown(result).includes("No findings"));
   assert.ok(formatHtml(result).includes("No unsafe hook patterns"));
+});
+
+test("explicitly requested empty hook maps render without changing legacy results", () => {
+  const legacy = resultFor("echo safe");
+  assert.doesNotMatch(formatTerminal(legacy), /Hook execution paths/u);
+  assert.doesNotMatch(formatMarkdown(legacy), /Hook execution paths/u);
+  assert.doesNotMatch(formatHtml(legacy), /Hook execution paths/u);
+
+  const mapped: ScanResult = { ...legacy, hookPaths: [] };
+  assert.deepEqual((JSON.parse(formatJson(mapped)) as { hookPaths: unknown[] }).hookPaths, []);
+  assert.match(formatTerminal(mapped), /No statically provable local hook paths/u);
+  assert.match(formatMarkdown(mapped), /## Hook execution paths/u);
+  assert.match(formatHtml(mapped), /id="hook-paths-title"/u);
+});
+
+test("hook paths associate visible findings and escape hostile display values", () => {
+  const base = resultFor("rm -rf /", "leaf.sh");
+  const hostile = "</code><img src=x>|`\n\u001b[2J";
+  const mapped: ScanResult = {
+    ...base,
+    hookPaths: [{
+      entry: { path: hostile, line: 2, column: 3 },
+      hook: hostile,
+      edges: [{
+        from: { path: hostile, line: 2, column: 3 },
+        launcher: "bash",
+        reference: hostile,
+        to: "leaf.sh",
+      }],
+      leaf: "leaf.sh",
+      findingFingerprints: [base.findings[0]?.fingerprint ?? "missing", "dangling"],
+      incomplete: "depth-limit",
+    }],
+  };
+
+  const terminal = formatTerminal(mapped);
+  assert.match(terminal, /Findings: HG001/u);
+  assert.match(terminal, /Incomplete: depth-limit/u);
+  assert.equal(terminal.includes("\u001b[2J"), false);
+  assert.equal(terminal.includes("`\n\u001b"), false);
+  assert.ok(terminal.includes("\\n\\u001b[2J"));
+
+  const markdown = formatMarkdown(mapped);
+  assert.equal(markdown.includes("</code><img"), false);
+  assert.ok(markdown.includes("&lt;/code&gt;&lt;img"));
+  assert.match(markdown, /HG001/u);
+
+  const html = formatHtml(mapped);
+  assert.equal(html.includes("<img src=x>"), false);
+  assert.ok(html.includes("&lt;/code&gt;&lt;img src=x&gt;"));
+  assert.match(html, /Hook execution paths/u);
+  assert.deepEqual((JSON.parse(formatJson(mapped)) as { hookPaths: unknown[] }).hookPaths, mapped.hookPaths);
 });

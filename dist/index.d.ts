@@ -3,5 +3,5 @@ export { formatHtml, formatJson, formatMarkdown, formatResult, formatSarif, form
 export { createBaseline, DEFAULT_POLICY, loadBaseline, loadPolicy, normalizePolicy } from "./policy.js";
 export { RULES } from "./rules.js";
 export { isAtLeast, severityRank } from "./utils.js";
-export type { AuditOptions, AuditRequest, Baseline, Finding, Location, OutputFormat, Policy, RuleMetadata, ScanResult, Severity, SkippedFile, } from "./types.js";
+export type { AuditOptions, AuditRequest, Baseline, Finding, HookEdge, HookLauncher, HookPath, HookPathIncompleteReason, Location, OutputFormat, Policy, RuleMetadata, ScanResult, Severity, SkippedFile, } from "./types.js";
 //# sourceMappingURL=index.d.ts.map

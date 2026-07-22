@@ -2,7 +2,8 @@ import path from "node:path";
 import { discover } from "./discovery.js";
 import { DEFAULT_POLICY, normalizePolicy } from "./policy.js";
 import { RULES, runRules } from "./rules.js";
-import { fingerprint, sortFindings } from "./utils.js";
+import { attachHookPathFindings, mapHookPaths, validateMaxHookDepth } from "./hookgraph.js";
+import { compareText, fingerprint, sortFindings } from "./utils.js";
 import type { AuditRequest, Finding, Policy, ScanInput, ScanResult } from "./types.js";
 
 export const VERSION = "0.2.0";
@@ -43,17 +44,26 @@ export async function audit(request: AuditRequest): Promise<ScanResult> {
   const policy = effectivePolicy(request.policy);
   const baseline = new Set(request.baseline?.fingerprints ?? []);
   const discovered = await discover(request.targets, cwd, policy);
-  const all = sortFindings(discovered.files.flatMap((input) => findingsFor(input, policy, baseline)));
+  if (request.maxHookDepth !== undefined) validateMaxHookDepth(request.maxHookDepth);
+  const mapped = request.mapHooks === true
+    ? await mapHookPaths(discovered.files, cwd, policy, request.maxHookDepth)
+    : undefined;
+  const files = [...discovered.files, ...(mapped?.files ?? [])]
+    .sort((left, right) => compareText(left.displayPath, right.displayPath));
+  const all = sortFindings(files.flatMap((input) => findingsFor(input, policy, baseline)));
   const suppressedCount = all.filter((finding) => finding.suppressed === true).length;
   const findings = request.includeSuppressed === true ? all : all.filter((finding) => finding.suppressed !== true);
+  const skipped = new Map<string, (typeof discovered.skipped)[number]>();
+  for (const item of [...discovered.skipped, ...(mapped?.skipped ?? [])]) skipped.set(`${item.path}\0${item.reason}`, item);
   return {
     version: VERSION,
     scannedAt: request.now ?? new Date().toISOString(),
     root: cwd,
-    filesScanned: discovered.files.length,
-    bytesScanned: discovered.bytes,
+    filesScanned: files.length,
+    bytesScanned: discovered.bytes + (mapped?.bytes ?? 0),
     findings,
     suppressedCount,
-    skippedFiles: discovered.skipped,
+    skippedFiles: [...skipped.values()].sort((left, right) => compareText(left.path, right.path) || compareText(left.reason, right.reason)),
+    ...(mapped === undefined ? {} : { hookPaths: attachHookPathFindings(mapped.paths, findings) }),
   };
 }
