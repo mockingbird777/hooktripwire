@@ -1,0 +1,56 @@
+# Upload HookTripwire findings to GitHub code scanning.
+#
+# Copy this into .github/workflows/ in your repository. It audits your agent
+# hook configuration, emits standards-valid SARIF, and uploads it to the
+# Security > Code scanning tab — while still failing the check on high-severity
+# findings.
+name: Agent hook security (SARIF)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: read the repo to scan it, and write security events to
+# publish the SARIF. Nothing else is granted.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Third-party Actions are pinned to a full commit SHA (not a mutable tag),
+      # the same policy HookTripwire's own HG007 rule enforces.
+      - uses: mockingbird777/hooktripwire@56b0557fbf922f2c20c23c8ade551148f1cbe4b0 # v0.3.0
+        with:
+          target: .
+          format: sarif
+          output: hooktripwire.sarif
+          # Fail the job on any high-or-worse finding. This runs BEFORE the
+          # upload step below.
+          fail-on: high
+
+      # `if: always()` runs the upload even when the audit step failed on a
+      # high-severity finding — so the finding is still published to code
+      # scanning for triage, not swallowed by the earlier failure. The job's
+      # overall conclusion stays "failed" (from the audit step), so the check
+      # still blocks; the upload just makes the SARIF visible alongside it.
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
+        with:
+          sarif_file: hooktripwire.sarif
+          category: hooktripwire
+
+# Pull requests from forks: GitHub runs them with a read-only GITHUB_TOKEN, so
+# `security-events: write` is not granted and the upload step is expected to
+# fail (or no-op) — that is the intended boundary, not something to widen. The
+# audit step's `fail-on` still gates the PR check on its own. Code scanning
+# results are published from the `push` runs on your default branch, where the
+# token has the write scope. Do not switch to `pull_request_target` or a PAT to
+# force fork uploads; that would hand fork code the elevated token this boundary
+# exists to withhold.
