@@ -3,13 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="HookTripwire is an offline security scanner for AI coding-agent hooks and automation configuration.">
+  <meta name="description" content="Audit AI coding-agent hooks offline, then map statically provable configuration-to-script security provenance with HookGraph.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="HookTripwire — AI agent hook security">
-  <meta property="og:description" content="HookTripwire is an offline security scanner for AI coding-agent hooks and automation configuration.">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:description" content="Audit AI coding-agent hooks offline, then map statically provable configuration-to-script security provenance with HookGraph.">
+  <meta property="og:url" content="https://mockingbird777.github.io/hooktripwire/">
+  <meta property="og:image" content="https://raw.githubusercontent.com/mockingbird777/hooktripwire/v0.3.0/assets/social-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="HookTripwire — AI agent hook security">
-  <meta name="twitter:description" content="HookTripwire is an offline security scanner for AI coding-agent hooks and automation configuration.">
+  <meta name="twitter:description" content="Audit AI coding-agent hooks offline, then map statically provable configuration-to-script security provenance with HookGraph.">
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/mockingbird777/hooktripwire/v0.3.0/assets/social-preview.png">
+  <meta name="referrer" content="no-referrer">
+  <link rel="canonical" href="https://mockingbird777.github.io/hooktripwire/">
   <meta name="theme-color" content="#090d18">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'">
   <title>HookTripwire — AI agent hook security</title>
@@ -78,7 +83,19 @@
     .dot:first-child { background: #ff5f57; } .dot:nth-child(2) { background: #febc2e; } .dot:nth-child(3) { background: #28c840; }
     .terminal-title { margin-left: auto; margin-right: auto; color: #64718b; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
     pre { margin: 0; padding: 22px; min-height: 386px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.72 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #b8c5dc; }
-    .prompt { color: var(--mint); } .dim { color: #64718b; } .critical { color: var(--red); } .high { color: var(--orange); } .medium { color: var(--yellow); } .cyan { color: #7fdaca; }
+    .prompt { color: var(--mint); } .dim { color: #64718b; } .critical { color: var(--red); } .high { color: var(--orange); } .medium, .yellow { color: var(--yellow); } .cyan { color: #7fdaca; }
+    .graph-section { padding: 100px 0; border-top: 1px solid var(--line); }
+    .graph-panel { padding: clamp(24px, 5vw, 48px); border: 1px solid #34425e; border-radius: 22px; background: radial-gradient(circle at 0 0, rgba(119,234,214,.1), transparent 30rem), var(--panel); }
+    .graph-flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 14px; align-items: stretch; margin-top: 36px; }
+    .graph-node { min-width: 0; padding: 20px; border: 1px solid #2b3852; border-radius: 14px; background: #090e19; }
+    .graph-node strong { display: block; margin: 9px 0 6px; overflow-wrap: anywhere; }
+    .graph-node p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .graph-kind { color: var(--mint); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .graph-arrow { display: grid; place-items: center; color: var(--violet); font-size: 25px; }
+    .graph-findings { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 13px; }
+    .graph-findings span { padding: 4px 6px; color: #ff9ab3; background: rgba(255,79,123,.1); border: 1px solid rgba(255,79,123,.25); border-radius: 6px; font: 10px ui-monospace, monospace; }
+    .boundaries { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
+    .boundaries li { padding: 7px 10px; color: #a9b5cb; background: rgba(255,255,255,.035); border: 1px solid #28344d; border-radius: 999px; font-size: 11px; }
     section { position: relative; }
     .section-head { display: flex; justify-content: space-between; gap: 30px; align-items: end; margin-bottom: 32px; }
     .eyebrow { color: var(--violet); text-transform: uppercase; font-size: 11px; letter-spacing: .17em; font-weight: 850; }
@@ -131,6 +148,8 @@
       .hero { grid-template-columns: 1fr; gap: 42px; padding-top: 35px; }
       .terminal { transform: none; }
       .lab-grid { grid-template-columns: 1fr; }
+      .graph-flow { grid-template-columns: 1fr; }
+      .graph-arrow { transform: rotate(90deg); min-height: 24px; }
       .config-pane { border-right: 0; border-bottom: 1px solid var(--line); }
       .rules-grid, .steps { grid-template-columns: repeat(2, 1fr); }
       .section-head { display: block; } .section-head p { margin-top: 20px; }
@@ -153,7 +172,7 @@
 <body>
   <nav class="shell" aria-label="Primary navigation">
     <a class="brand" href="#top"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2 4.5 5v6.1c0 4.8 3.1 8.8 7.5 10.9 4.4-2.1 7.5-6.1 7.5-10.9V5L12 2Z" stroke="currentColor" stroke-width="2"/><path d="m8.4 12 2.2 2.2 5-5" stroke="currentColor" stroke-width="2"/></svg></span>HookTripwire</a>
-    <div class="nav-links"><a href="#lab">Security lab</a><a href="#rules">Rules</a><a href="#workflow">Workflow</a><a class="github" href="https://github.com/mockingbird777/hooktripwire">View on GitHub ↗</a></div>
+    <div class="nav-links"><a href="#hookgraph">HookGraph</a><a href="#lab">Security lab</a><a href="#rules">Rules</a><a class="github" href="https://github.com/mockingbird777/hooktripwire">View on GitHub ↗</a></div>
   </nav>
 
   <main id="top">
@@ -161,13 +180,13 @@
       <div>
         <span class="kicker"><span class="pulse"></span> Agent automation security</span>
         <h1>Trip the wire <span>before the hook runs.</span></h1>
-        <p class="lede">Static security auditing for AI coding-agent hooks, permissions, and workflows. HookTripwire catches destructive commands, secret exfiltration, shell injection, wildcard access, and mutable dependencies—fully offline.</p>
+        <p class="lede">Static security auditing for AI coding-agent hooks, permissions, and workflows. HookGraph connects a configured hook to statically provable local scripts and their findings—without executing the path.</p>
         <div class="actions"><a class="button" href="https://github.com/mockingbird777/hooktripwire">Get HookTripwire</a><button class="button secondary" id="copy-command" type="button">Copy npx command</button></div>
         <div class="trust"><span>Zero runtime dependencies</span><span>Never executes commands</span><span>No telemetry</span></div>
       </div>
       <div class="terminal" aria-label="Example HookTripwire scan">
         <div class="terminal-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="terminal-title">security scan</span></div>
-        <pre><span class="prompt">$</span> npx --yes github:mockingbird777/hooktripwire --demo --fail-on none
+        <pre><span class="prompt">$</span> npx --yes github:mockingbird777/hooktripwire#v0.3.0 --demo --map-hooks --fail-on none
 
 <span class="critical">✖ CRITICAL HG002</span>  demo-agent-settings.json:3:19
   Remote content piped to an interpreter
@@ -183,9 +202,29 @@
   Secret may be written to logs
   <span class="dim">Evidence:</span> echo $DEPLOY_TOKEN
 
+<span class="cyan">Hook execution paths (1)</span>
+  beforeCommit → &lt;dynamic&gt;
+  <span class="yellow">Incomplete: dynamic-reference</span>
+
 <span class="dim">Scanned 1 file · 7 findings · 0 commands executed</span></pre>
       </div>
     </header>
+
+    <section class="graph-section" id="hookgraph">
+      <div class="shell">
+        <div class="section-head"><div><div class="eyebrow">New in 0.3 · HookGraph</div><h2>From finding<br>to reachable path.</h2></div><p>A flat finding says a script is risky. HookGraph adds the missing provenance: which configured agent event can reach it, through which literal local references, and where static proof ends.</p></div>
+        <div class="graph-panel">
+          <div class="graph-flow" aria-label="Illustrative HookGraph path from agent configuration to script findings">
+            <article class="graph-node"><span class="graph-kind">Hook entry</span><strong>.claude/settings.json</strong><p>PostToolUse · exact source location</p></article>
+            <div class="graph-arrow" aria-hidden="true">→</div>
+            <article class="graph-node"><span class="graph-kind">Literal reference</span><strong>scripts/review.sh</strong><p>bash launcher · repository-contained</p></article>
+            <div class="graph-arrow" aria-hidden="true">→</div>
+            <article class="graph-node"><span class="graph-kind">Audited leaf</span><strong>scripts/publish.sh</strong><p>Finding fingerprints remain traceable to the leaf.</p><div class="graph-findings"><span>HG002</span><span>HG003</span></div></article>
+          </div>
+          <ul class="boundaries" aria-label="HookGraph proof boundaries"><li>dynamic → disclosed</li><li>outside root → rejected</li><li>symlink → rejected</li><li>cycle → bounded</li><li>missing file → disclosed</li><li>no execution</li><li>no network</li></ul>
+        </div>
+      </div>
+    </section>
 
     <section class="lab" id="lab">
       <div class="shell">
@@ -343,7 +382,7 @@
       render();
     }));
     document.querySelector("#copy-command").addEventListener("click", async event => {
-      const command = "npx --yes github:mockingbird777/hooktripwire --demo --fail-on none";
+      const command = "npx --yes github:mockingbird777/hooktripwire#v0.3.0 --demo --map-hooks --fail-on none";
       try { await navigator.clipboard.writeText(command); event.currentTarget.textContent = "Copied ✓"; }
       catch { event.currentTarget.textContent = command; }
     });
