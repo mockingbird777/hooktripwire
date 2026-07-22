@@ -1,0 +1,37 @@
+# Upload HookTripwire findings to GitHub code scanning.
+#
+# Step roles:
+#   audit  — produces hooktripwire.sarif (and fails the job at `fail-on: high`)
+#   upload — sends the SARIF to code scanning; `if: always()` keeps the
+#            findings visible even when the audit step fails the job, and the
+#            job's final result still comes from the audit step's threshold.
+#
+# Fork PRs: `security-events: write` is not granted to workflows triggered by
+# pull requests from forks, so the upload step is skipped there rather than
+# requesting broader credentials. Findings still gate the job via `fail-on`.
+name: Agent hook security (SARIF)
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Audit agent hooks (produces SARIF)
+        uses: mockingbird777/hooktripwire@06e5bf6beed0faa1deb534bbbabc54a87ba8cb3a # v0.2.0
+        with:
+          target: .
+          format: sarif
+          output: hooktripwire.sarif
+          fail-on: high
+      - name: Upload SARIF to code scanning
+        # Runs even when the audit step failed the job so findings reach the
+        # Security tab; skipped for fork PRs, which lack security-events: write.
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: hooktripwire.sarif
