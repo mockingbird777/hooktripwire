@@ -1,5 +1,5 @@
 name: HookTripwire agent hook audit
-description: Audit AI-agent hooks and automation configuration without executing scanned commands.
+description: Audit AI-agent hooks and map repository-local execution provenance without executing scanned commands.
 author: mockingbird777
 
 branding:

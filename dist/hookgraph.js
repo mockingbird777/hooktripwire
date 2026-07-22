@@ -543,6 +543,10 @@ function referencesFromTokens(tokens) {
     while (/^[-+]/u.test(tokens[index]?.value ?? "")) {
         const option = tokens[index]?.value ?? "";
         const optionName = option.replace(/^[-+]+/u, "");
+        // Node.js and Python options have runtime- and version-specific argument
+        // semantics (-m, -c, -W, -X, loaders, eval modes, and more). Treat every
+        // such invocation as opaque rather than mislabeling an option argument as
+        // a repository-local script.
         const dynamicMode = launcher === "node"
             || launcher === "python"
             || optionName.length === 0

@@ -4,7 +4,7 @@ import { DEFAULT_POLICY, normalizePolicy } from "./policy.js";
 import { RULES, runRules } from "./rules.js";
 import { attachHookPathFindings, mapHookPaths, validateMaxHookDepth } from "./hookgraph.js";
 import { compareText, fingerprint, sortFindings } from "./utils.js";
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 const metadata = new Map(RULES.map((rule) => [rule.id, rule]));
 function effectivePolicy(input) {
     return normalizePolicy(input ?? DEFAULT_POLICY);

@@ -12,7 +12,7 @@ function run(args: string[], cwd = process.cwd()) {
 }
 
 test("version, help, and rule catalog are available", () => {
-  assert.equal(run(["--version"]).stdout.trim(), "0.2.0");
+  assert.equal(run(["--version"]).stdout.trim(), "0.3.0");
   assert.match(run(["--help"]).stdout, /Usage:/);
   assert.match(run(["--help"]).stdout, /--map-hooks/u);
   assert.match(run(["--list-rules"]).stdout, /HG015/);

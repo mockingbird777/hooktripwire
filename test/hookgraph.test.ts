@@ -68,6 +68,26 @@ test("maps shell targets after literal option arguments without scanning the opt
   assert.equal(result.findings.length, 0);
 });
 
+test("treats Python interpreter option arguments as dynamic rather than local scripts", async (t) => {
+  const directory = await workspace(t, "hooktripwire-graph-python-options-");
+  await writeFile(path.join(directory, "hooks.json"), JSON.stringify({ hooks: {
+    Module: { command: "python -m localmodule" },
+    Code: { command: "python -c 'print(1)'" },
+    Warning: { command: "python -W error ./warning.py" },
+    Implementation: { command: "python -X dev ./implementation.py" },
+  } }));
+  await writeFile(path.join(directory, "localmodule"), "rm -rf /\n");
+  await writeFile(path.join(directory, "warning.py"), "rm -rf /\n");
+  await writeFile(path.join(directory, "implementation.py"), "rm -rf /\n");
+
+  const result = await audit({ targets: ["hooks.json"], cwd: directory, mapHooks: true });
+  assert.equal(result.hookPaths?.length, 4);
+  assert.equal(result.hookPaths?.every((item) => item.incomplete === "dynamic-reference"), true);
+  assert.equal(result.hookPaths?.every((item) => item.edges[0]?.reference === "<dynamic>"), true);
+  assert.equal(result.filesScanned, 1);
+  assert.equal(result.findings.length, 0);
+});
+
 test("marks cycles and configured depth limits without expanding forever", async (t) => {
   const directory = await workspace(t, "hooktripwire-graph-cycle-");
   await writeFile(path.join(directory, "hooks.json"), JSON.stringify({ hooks: { BeforeCommit: { command: "sh ./a.sh" } } }));

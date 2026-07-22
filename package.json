@@ -1,7 +1,7 @@
 {
   "name": "hooktripwire",
-  "version": "0.2.0",
-  "description": "Offline static security auditing for AI-agent hooks, permissions, and automation configuration.",
+  "version": "0.3.0",
+  "description": "Offline AI-agent hook security auditing with bounded local execution-provenance mapping.",
   "type": "module",
   "bin": {
     "hooktripwire": "dist/cli.js"
@@ -39,6 +39,9 @@
     "claude-code",
     "cursor",
     "hooks",
+    "hookgraph",
+    "provenance",
+    "execution-provenance",
     "sarif",
     "github-actions",
     "supply-chain"
