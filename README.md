@@ -252,7 +252,7 @@ jobs:
       - run: npx --yes github:mockingbird777/hooktripwire .claude .cursor .github/workflows
 ```
 
-For GitHub code scanning, generate SARIF and upload it with your organization’s approved, SHA-pinned SARIF workflow.
+For GitHub code scanning, generate SARIF and upload it with your organization’s approved, SHA-pinned SARIF workflow. A reviewed, least-privilege example is provided in [`examples/workflows/code-scanning-sarif.yml`](examples/workflows/code-scanning-sarif.yml): it emits SARIF, uploads it to the Security → Code scanning tab with `if: always()` so findings publish even when the audit fails the check, and documents the read-only-token boundary for pull requests from forks.
 
 ## Library API
 
