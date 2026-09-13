@@ -232,6 +232,8 @@ jobs:
 
 For high-assurance workflows, pin the Action to the release's full commit SHA. Optional inputs include `format`, `output`, `policy`, `baseline`, `include-suppressed`, `map-hooks`, and `max-hook-depth`; input values are passed as arguments without shell evaluation.
 
+To surface findings in GitHub code scanning, see the reviewed SARIF upload workflow in [`examples/sarif-upload.yml`](examples/sarif-upload.yml) — it pins every third-party Action to a full commit SHA, keeps permissions to `contents: read` plus `security-events: write`, uploads with `if: always()` so findings stay visible when the audit step fails the job, and skips the upload for pull requests from forks (which do not receive `security-events: write`) instead of requesting broader credentials.
+
 If your organization does not permit third-party composite Actions, run the CLI directly:
 
 ```yaml
