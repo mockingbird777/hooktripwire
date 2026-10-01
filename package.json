@@ -57,7 +57,7 @@
     "url": "https://github.com/mockingbird777/hooktripwire/issues"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.0",
     "typescript": "^5.8.0"
   }
 }
